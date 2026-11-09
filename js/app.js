@@ -172,7 +172,13 @@ const ICONS={
  train:'<path d="M2.5 10h15M5 6v8M15 6v8M3 8v4M17 8v4"/>',
  prog:'<path d="M2 15l5-5 3 3 7.5-8.5"/>',
  learn:'<path d="M7 6l-4 4 4 4M13 6l4 4-4 4"/>',
- more:'<circle cx="4.5" cy="10" r="1.2"/><circle cx="10" cy="10" r="1.2"/><circle cx="15.5" cy="10" r="1.2"/>'
+ more:'<circle cx="4.5" cy="10" r="1.2"/><circle cx="10" cy="10" r="1.2"/><circle cx="15.5" cy="10" r="1.2"/>',
+ todo:'<path d="M3.5 5.5l1.5 1.5 2.5-3M3.5 11.5l1.5 1.5 2.5-3M10 6h6.5M10 12h6.5M3.5 16.5h13"/>',
+ review:'<path d="M4 16l1-4L13.5 3.5a1.5 1.5 0 012 2L7 14l-3 2zM11.5 5.5l2 2"/>',
+ money:'<circle cx="10" cy="10" r="7.5"/><path d="M12.5 7.3c-.6-.8-1.5-1.2-2.5-1.2-1.4 0-2.5.8-2.5 1.9 0 2.6 5 1.4 5 4 0 1.1-1.1 1.9-2.5 1.9-1.1 0-2-.4-2.6-1.2M10 4.5v11"/>',
+ stock:'<path d="M3 6.5L10 3l7 3.5v7L10 17l-7-3.5zM3 6.5l7 3.5 7-3.5M10 10v7"/>',
+ claude:'<path d="M10 2.5l1.6 4.4 4.4 1.6-4.4 1.6L10 14.5l-1.6-4.4L4 8.5l4.4-1.6zM15.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>',
+ gear:'<circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1L4.7 4.7"/>'
 };
 const TABS=[['today','Today'],['cal','Plan'],['train','Train'],['prog','Progress'],['more','More']];
 
@@ -588,12 +594,12 @@ function nextUp(s){
   const list=dayItems(s).filter(x=>x.start!=null&&(s!==T()||x.end>nm)).sort((a,b)=>a.start-b.start);
   return list[0]||null;
 }
-function dayHtml(s){
+function dayHtml(s,inline){
   const p=planFor(s),d=state.days[s]||{};
   const note=(state.custom||{}).note;
   let h=(note?'<section class="card note"><b>Plan note</b><p class="sm" style="margin:4px 0 0">'+esc(note)+'</p></section>':'')+'<section class="card"><div class="lab">Plan for this day</div><div class="ttl">'+esc(p.t)+'</div><p class="muted">'+esc(p.d)+'</p>';
   if(fuelFor(p))h+='<p class="sm"><b>Fuel:</b> '+esc(fuelFor(p))+'</p>';
-  h+='<div class="btns">'+(p.k==='s'&&p.tm?'<button class="btn" data-a="tmode" data-m="'+p.tm+'">Log strength '+p.tm+'</button>':p.k==='c'?'<button class="btn" data-a="tmode" data-m="cardio">Log cardio</button>':'')+'<select class="sel" data-chg="planSel" aria-label="Change session"><option value="">Auto plan</option>'+PLAN_OPTS.map(k=>'<option value="'+k+'"'+(d.plan===k?' selected':'')+'>'+esc(PT[k].t)+'</option>').join('')+'</select></div></section>';
+  h+='<div class="btns">'+(inline?'':p.k==='s'&&p.tm?'<button class="btn" data-a="tmode" data-m="'+p.tm+'">Log strength '+p.tm+'</button>':p.k==='c'?'<button class="btn" data-a="tmode" data-m="cardio">Log cardio</button>':'')+'<select class="sel" data-chg="planSel" aria-label="Change session"><option value="">Auto plan</option>'+PLAN_OPTS.map(k=>'<option value="'+k+'"'+(d.plan===k?' selected':'')+'>'+esc(PT[k].t)+'</option>').join('')+'</select></div></section>';
   if(p.tests)h+='<section class="card"><div class="lab">Test results</div>'+testsHtml(p,s)+'</section>';
   return h;
 }
@@ -929,7 +935,21 @@ function histHtml(){
     return '<div class="hist"><span><b>'+fmtD(z.date)+'</b> · '+esc(txt)+'</span>'+armBtn('sess'+z.id,'delSess','data-id="'+z.id+'"')+'</div>';
   }).join('')+'</section>';
 }
+function vTrainPhone(){
+  const s=ui.date,p=planFor(s),t=T(),days=weekDays(monday(s));
+  let h=head('Training',fmtD(s),dnav())+storageBanner();
+  h+='<section class="card lrs tweek"><div class="lab" style="padding-top:12px;margin-bottom:0">This week</div>'+days.map(d=>{
+    const q=planFor(d),c=dayChecks(d),done=c.tr.on&&q.k!=='r';
+    const st=q.k==='r'?'<span class="tw-r">rest</span>':done?'<span class="tw-ok">✓</span>':d<t?'<span class="tw-miss">–</span>':'';
+    return '<button class="lr tw'+(d===s?' sel':'')+(d===t?' td':'')+'" data-a="gotoTrainDay" data-date="'+d+'"><span class="tw-d">'+DAY[dow(d)]+'<small>'+pd(d).getDate()+'</small></span><span class="lrt"><b>'+esc(planName(q))+'</b></span><span class="lrr">'+st+'</span></button>';
+  }).join('')+'</section>';
+  h+=dayHtml(s,true);
+  if(p.k==='s'&&p.tm&&EX[p.tm]){ui.tmode=p.tm;h+=strengthHtml(p.tm,s);}
+  else if(p.k==='c')h+=cardioHtml(s);
+  return h;
+}
 function vTrain(){
+  if(isPhone())return vTrainPhone();
   const s=ui.date,m=ui.tmode,p=planFor(s);
   let h=head('Training',fmtD(s),dnav())+storageBanner();
   h+='<div class="seg">'+['day'].concat(Object.keys(EX),['cardio','hist']).map(k=>'<button class="'+(m===k?'on':'')+'" data-a="tmode" data-m="'+k+'">'+(k==='day'?'Day':k==='cardio'?'Cardio':k==='hist'?'History':k)+'</button>').join('')+'</div>';
@@ -999,7 +1019,15 @@ function strHtml(){
   return '<section class="card"><div class="lab">Benchmarks</div><p class="muted sm">Tap a row to add a value or see the history. The test week fills this in.</p>'+benchHtml()+'</section>'+curvesHtml();
 }
 /* ================= PROGRESS ================= */
+function goalsCompact(){
+  if(!state.goals.length)return '';
+  return '<section class="card"><div class="lab">Goals</div>'+state.goals.map(g=>{
+    const i=goalInfo(g),late=!i.reached&&i.exp!=null&&i.p+0.05<i.exp;
+    return '<div class="gc"><div class="gc-h"><b>'+esc(g.t)+'</b><span class="'+(i.reached?'ok':late?'warn':'muted')+'">'+(i.reached?'reached ✓':g.by?(i.left>=0?i.left+' d left':'overdue'):'')+'</span></div>'+bar(i.p*100)+'<small class="muted">now '+esc(goalFmt(g,i.cur))+' · target '+esc(goalFmt(g,g.target))+'</small></div>';
+  }).join('')+'</section>';
+}
 function vProg(){
+  if(isPhone())return head('Progress','What matters right now')+storageBanner()+goalsCompact()+overHtml(['garmin','weight','training','streaks']);
   const m=ui.gmode||'over';
   let h=head('Progress',m==='over'?'What works and what does not':'')+storageBanner();
   h+='<div class="seg">'+[['over','Overview'],['goals','Goals'],['body','Body'],['str','Strength']].map(x=>'<button class="'+(m===x[0]?'on':'')+'" data-a="gmode" data-m="'+x[0]+'">'+x[1]+'</button>').join('')+'</div>';
@@ -1053,16 +1081,22 @@ function trainWeek(m){
   return{ss:state.sessions.filter(z=>z.type!=='cardio'&&inw(z)).length,cn:cs.length,min:cs.reduce((a,z)=>a+(+z.min||0),0),
     ride:cs.filter(z=>/ride/i.test(z.kind)).reduce((a,z)=>Math.max(a,+z.min||0),0)};
 }
-function overHtml(){
+function overHtml(only){
   const t=T(),m0=monday(t),q=(l,v,cl)=>'<div class="q"><span>'+l+'</span><b'+(cl?' class="'+cl+'"':'')+'>'+v+'</b></div>';
+  const want=k=>!only||only.indexOf(k)>=0;
   let h='';
+  if(want('garmin')){
   // Garmin: last night and today (filled in automatically, so it is here and not on Today)
   if(window.LDGarmin)h+=window.LDGarmin.todayHtml(t)||window.LDGarmin.todayHtml(add(t,-1));
+  }
+  if(want('points')){
   // 1. points per week
   const wks=[];for(let i=7;i>=0;i--){const m=add(m0,-7*i),v=weekPct(m);if(v!=null)wks.push({l:'W'+isoWeek(m),v:v,cur:i===0});}
   h+='<section class="card"><div class="lab">Tracker points per week</div>';
   if(wks.length)h+=barsSvg(wks);
   h+='<p class="muted sm">In % of the possible points. Dashed line: your goal of 79 %.'+(wks.length<3?' The trend fills in over the next weeks.':'')+' Light bar: this week so far.</p></section>';
+  }
+  if(want('habits')){
   // 2. habits
   const hs=habitStats(14);
   h+='<section class="card"><div class="lab">Habits · last '+(hs?diff(hs.from,hs.to)+1:14)+' days</div>';
@@ -1074,6 +1108,8 @@ function overHtml(){
     h+=hs.list.map(x=>'<div class="hb"><span>'+esc(x.s)+'</span><div class="bar"><i style="width:'+Math.round(x.p*100)+'%'+(x.p<.6?';background:var(--warn)':'')+'"></i></div><b>'+x.on+'/'+x.of+'</b></div>').join('');
   }
   h+='</section>';
+  }
+  if(want('weight')){
   // 3. weight
   const wt=weightTrend();
   h+='<section class="card"><div class="lab">Weight trend</div>';
@@ -1085,12 +1121,16 @@ function overHtml(){
       '<p class="sm" style="margin-top:8px;color:var(--'+cl+')"><b>'+v+'</b></p><p class="muted sm">From '+wt.n+' weigh-ins over '+wt.days+' days.</p>';
   }
   h+='</section>';
+  }
+  if(want('training')){
   // 4. training
   const tw=trainWeek(m0),past=[1,2,3,4].map(i=>add(m0,-7*i)).filter(m=>add(m,6)>=TRACK).map(trainWeek);
   const pa=k=>past.length?r1(avg(past.map(x=>x[k]))):null,mo=pd(t).getMonth(),rideGoal=mo===10?90:mo===11?135:180;
   const vs=(a,k)=>a+(pa(k)!=null?' <span class="muted sm">· avg '+pa(k)+'</span>':'');
   h+='<section class="card"><div class="lab">Training · this week</div>'+q('Strength sessions',vs(tw.ss,'ss'))+q('Cardio sessions',vs(tw.cn,'cn'))+q('Cardio minutes',vs(tw.min,'min'))+
     q('Longest ride',tw.ride+' min <span class="muted sm">· plan '+rideGoal+'</span>',tw.ride>=rideGoal?'ok':'')+'<p class="muted sm">“avg” is the average of the weeks before. Long ride: 90 min in November, 180 min by January.</p></section>';
+  }
+  if(want('sleep')){
   // 5. sleep and energy
   const dl=[];for(let s=add(t,-27);s<=t;s=add(s,1)){const d=state.days[s];if(d)dl.push({s:s,sl:d.sleep,en:d.energy});}
   const mean=(f,from)=>{const a=dl.filter(x=>x.s>=from&&x[f]!=null).map(x=>x[f]);return a.length?r1(avg(a)):null;};
@@ -1100,8 +1140,11 @@ function overHtml(){
   if(hi.length>=3&&lo.length>=3)h+='<p class="sm" style="margin-top:8px"><b>With 7.5 h sleep or more your energy is '+r1(avg(hi.map(x=>x.en)))+'/10, with less it is '+r1(avg(lo.map(x=>x.en)))+'/10.</b></p>';
   else h+='<p class="muted sm">Log sleep and energy for a few days and this shows how much sleep changes your energy.</p>';
   h+='</section>';
+  }
+  if(want('streaks')){
   // 6. streaks
   h+='<section class="card"><div class="lab">Streaks</div><div class="streaks">'+streaks().map(x=>'<div class="st"><b>'+x.cur+'</b><span>'+x.k+'</span><small>best '+x.best+'</small></div>').join('')+'</div><p class="muted sm" style="margin:10px 0 0">Side quests: <b style="color:var(--fg)">'+sqCount(m0,add(m0,6))+'</b> this week · '+sqCount('2000-01-01',t)+' in total</p></section>';
+  }
   return h;
 }
 /* goals: measured by a benchmark, the weight average, the Python course or a number you type */
@@ -1229,7 +1272,7 @@ function moneyHtml(){
 }
 function setupHtml(){
   let h='';
-  h+='<section class="card"><div class="lab">Settings</div><div class="fgrid"><label>Theme (this device)<select class="sel" data-chg="theme"><option value="auto"'+(devTheme()==='auto'?' selected':'')+'>Like the system</option><option value="light"'+(devTheme()==='light'?' selected':'')+'>Light</option><option value="dark"'+(devTheme()==='dark'?' selected':'')+'>Dark</option></select></label><label>Football training ends<input class="in" type="date" data-bind="settings|footballEnd" data-t="t" value="'+esc(state.settings.footballEnd)+'"></label><label>Start weight (kg)<input class="in" inputmode="decimal" data-bind="settings|startWeight" data-t="n" value="'+esc(state.settings.startWeight!=null?state.settings.startWeight:'')+'"></label><label>Show work hours in the schedule<select class="sel" data-chg="workOn"><option value="0"'+(!(state.settings.work||{}).on?' selected':'')+'>No (not fixed yet)</option><option value="1"'+((state.settings.work||{}).on?' selected':'')+'>Yes</option></select></label><label>Work start<input class="in" type="time" data-bind="settings|work|start" data-t="t" value="'+esc((state.settings.work||{}).start||'08:00')+'"></label><label>Work end<input class="in" type="time" data-bind="settings|work|end" data-t="t" value="'+esc((state.settings.work||{}).end||'17:00')+'"></label></div></section>';
+  h+='<section class="card"><div class="lab">General</div><div class="fgrid"><label>Theme (this device)<select class="sel" data-chg="theme"><option value="auto"'+(devTheme()==='auto'?' selected':'')+'>Like the system</option><option value="light"'+(devTheme()==='light'?' selected':'')+'>Light</option><option value="dark"'+(devTheme()==='dark'?' selected':'')+'>Dark</option></select></label><label>Football training ends<input class="in" type="date" data-bind="settings|footballEnd" data-t="t" value="'+esc(state.settings.footballEnd)+'"></label><label>Start weight (kg)<input class="in" inputmode="decimal" data-bind="settings|startWeight" data-t="n" value="'+esc(state.settings.startWeight!=null?state.settings.startWeight:'')+'"></label><label>Show work hours in the schedule<select class="sel" data-chg="workOn"><option value="0"'+(!(state.settings.work||{}).on?' selected':'')+'>No (not fixed yet)</option><option value="1"'+((state.settings.work||{}).on?' selected':'')+'>Yes</option></select></label><label>Work start<input class="in" type="time" data-bind="settings|work|start" data-t="t" value="'+esc((state.settings.work||{}).start||'08:00')+'"></label><label>Work end<input class="in" type="time" data-bind="settings|work|end" data-t="t" value="'+esc((state.settings.work||{}).end||'17:00')+'"></label></div></section>';
   if(window.LDSync)h+=window.LDSync.html();
   if(window.LDPush)h+=window.LDPush.html();
   if(window.LDGarmin)h+=window.LDGarmin.setupHtml()+window.LDGarmin.scaleHtml();
@@ -1537,15 +1580,16 @@ function vReview(){
 /* plan + more containers */
 function vPlan(){
   ui.wm=ui.cw;
+  if(isPhone()&&['sched','todo'].indexOf(ui.pmode)<0)ui.pmode='sched';
   const m=ui.cw,t=T(),md=ui.pmode;
-  let h=head('Plan','Week '+isoWeek(m)+' · '+fmtS(m)+' – '+fmtS(add(m,6)),'<div class="nav"><button class="ib" data-a="cprev" aria-label="Previous week">‹</button>'+(m!==monday(t)?'<button class="ib t" data-a="ctoday">This week</button>':'')+'<button class="ib" data-a="cnext" aria-label="Next week">›</button></div>')+storageBanner();
-  h+='<div class="seg">'+[['sched','Schedule'],['todo','To-dos'],['track','Tracker'],['review','Review']].map(x=>'<button class="'+(md===x[0]?'on':'')+'" data-a="pmode" data-m="'+x[0]+'">'+x[1]+'</button>').join('')+'</div>';
+  let h=head(isPhone()?'Plan':({sched:'Schedule',todo:'To-dos',track:'Tracker',review:'Review'}[md]||'Plan'),'Week '+isoWeek(m)+' · '+fmtS(m)+' – '+fmtS(add(m,6)),'<div class="nav"><button class="ib" data-a="cprev" aria-label="Previous week">‹</button>'+(m!==monday(t)?'<button class="ib t" data-a="ctoday">This week</button>':'')+'<button class="ib" data-a="cnext" aria-label="Next week">›</button></div>')+storageBanner();
+  if(isPhone())h+='<div class="seg">'+[['sched','Schedule'],['todo','To-dos']].map(x=>'<button class="'+(md===x[0]?'on':'')+'" data-a="pmode" data-m="'+x[0]+'">'+x[1]+'</button>').join('')+'</div>';
   return h+(md==='track'?vWeek():md==='review'?vReview():md==='todo'?vTodos():vCal());
 }
 function vMore(){
   const m=ui.mmode;
-  let h=head('More','')+storageBanner();
-  h+='<div class="seg">'+[['learn','Learn'],['money','Money'],['stock','Stock'],['claude','Claude'],['setup','Setup']].map(x=>'<button class="'+(m===x[0]?'on':'')+'" data-a="mmode" data-m="'+x[0]+'">'+x[1]+'</button>').join('')+'</div>';
+  if(isPhone()&&m!=='setup'){ui.mmode='setup';return vMore();}
+  let h=head({learn:'Learn',money:'Money',stock:'Stock',claude:'Claude',setup:'Settings'}[m]||'More','')+storageBanner();
   return h+(m==='money'?moneyHtml():m==='stock'?stockHtml():m==='setup'?setupHtml():m==='claude'?claudeHtml():vLearn());
 }
 
@@ -1934,8 +1978,20 @@ async function clClip(text,msg){
 
 /* ================= render + actions ================= */
 const VIEWS={today:vToday,cal:vPlan,train:vTrain,prog:vProg,more:vMore};
+/* Phone: five slim tabs. Desktop: the sidebar is a table of contents with small chapters in groups. */
+const NAV_PHONE=[{id:'today',l:'Today',tab:'today',ic:'today'},{id:'plan',l:'Plan',tab:'cal',ic:'cal'},{id:'train',l:'Train',tab:'train',ic:'train'},{id:'prog',l:'Progress',tab:'prog',ic:'prog'},{id:'set',l:'Settings',tab:'more',mm:'setup',ic:'gear'}];
+const NAV_DESK=[
+ {g:'Day'},{id:'today',l:'Today',tab:'today',ic:'today'},{id:'sched',l:'Schedule',tab:'cal',pm:'sched',ic:'cal'},{id:'todo',l:'To-dos',tab:'cal',pm:'todo',ic:'todo'},
+ {g:'Training'},{id:'train',l:'Train',tab:'train',ic:'train'},{id:'prog',l:'Progress',tab:'prog',ic:'prog'},
+ {g:'Reflect'},{id:'track',l:'Tracker',tab:'cal',pm:'track',ic:'week'},{id:'review',l:'Review',tab:'cal',pm:'review',ic:'review'},
+ {g:'Life'},{id:'learn',l:'Learn',tab:'more',mm:'learn',ic:'learn'},{id:'money',l:'Money',tab:'more',mm:'money',ic:'money'},{id:'stock',l:'Stock',tab:'more',mm:'stock',ic:'stock'},
+ {g:'System'},{id:'claude',l:'Claude',tab:'more',mm:'claude',ic:'claude'},{id:'setup',l:'Settings',tab:'more',mm:'setup',ic:'gear'}
+];
+const navOn=n=>ui.tab===n.tab&&(!n.pm||ui.pmode===n.pm)&&(!n.mm||ui.mmode===n.mm);
 function tabsHtml(){
-  return TABS.map(t=>'<button class="tb '+(ui.tab===t[0]?'on':'')+'" data-a="tab" data-tab="'+t[0]+'" aria-label="'+t[1]+'"><span class="ic"><svg viewBox="0 0 20 20" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+ICONS[t[0]]+'</svg></span><span class="tl">'+t[1]+'</span></button>').join('');
+  const ico=k=>'<span class="ic"><svg viewBox="0 0 20 20" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+ICONS[k]+'</svg></span>';
+  if(isPhone())return NAV_PHONE.map(n=>'<button class="tb '+(ui.tab===n.tab?'on':'')+'" data-a="nav" data-id="'+n.id+'" aria-label="'+n.l+'">'+ico(n.ic)+'<span class="tl">'+n.l+'</span></button>').join('');
+  return NAV_DESK.map(n=>n.g?'<div class="tg">'+n.g+'</div>':'<button class="tb '+(navOn(n)?'on':'')+'" data-a="nav" data-id="'+n.id+'">'+ico(n.ic)+'<span class="tl">'+n.l+'</span></button>').join('');
 }
 function render(keep){
   const y=window.scrollY,v=$('#view');
@@ -2041,6 +2097,13 @@ const ACT={
    save();render();toast(up?'Weights filled in · +'+inc+' kg':'Weights from last time filled in');
  },
  tab:t=>{ui.tab=t.dataset.tab;ui.armed=null;render(false);window.scrollTo(0,0);},
+ nav:t=>{
+   const n=(isPhone()?NAV_PHONE:NAV_DESK).find(x=>x.id===t.dataset.id);if(!n)return;
+   ui.tab=n.tab;if(n.pm)ui.pmode=n.pm;if(n.mm)ui.mmode=n.mm;
+   if(isPhone()&&n.tab==='cal'&&['sched','todo'].indexOf(ui.pmode)<0)ui.pmode='sched';
+   ui.armed=null;render(false);window.scrollTo(0,0);
+ },
+ gotoTrainDay:t=>{ui.date=t.dataset.date;render();},
  cprev:()=>{ui.cday=add(calDay(),-7);ui.cw=add(ui.cw,-7);render();},
  cnext:()=>{ui.cday=add(calDay(),7);ui.cw=add(ui.cw,7);render();},
  ctoday:()=>{ui.cw=monday(T());ui.cday=T();render();},
@@ -2331,6 +2394,8 @@ document.addEventListener('keydown',e=>{
 });
 
 let tx=null,ty=null;
+let wasPhone=isPhone();
+window.addEventListener('resize',()=>{if(isPhone()!==wasPhone){wasPhone=isPhone();render();}});
 document.addEventListener('touchstart',e=>{const q=e.touches[0];tx=q.clientX;ty=q.clientY;},{passive:true});
 document.addEventListener('scroll',e=>{const c=e.target;if(c&&c.classList&&c.classList.contains('sqc'))sqSync(c);},true);
 document.addEventListener('touchend',e=>{
