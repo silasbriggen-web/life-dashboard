@@ -1,2 +1,2 @@
-garminconnect>=0.2.25
+garminconnect>=0.3.20,<0.4
 requests>=2.31

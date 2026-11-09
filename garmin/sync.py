@@ -35,7 +35,7 @@ def login() -> Garmin:
     tokens = env("GARMIN_TOKENS")
     if tokens:
         api = Garmin()
-        api.login(tokens)  # strings longer than 512 chars are read as a token dump
+        api.login(tokens)  # a JSON string is read as the token dump from get_token.py
         return api
     email, pw = env("GARMIN_EMAIL"), env("GARMIN_PASSWORD")
     if not (email and pw):

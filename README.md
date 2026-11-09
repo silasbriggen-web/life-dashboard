@@ -88,8 +88,9 @@ HRV, Body Battery und Schritte. **Werte, die du selbst eintippst, werden nie üb
    ```bash
    python garmin/get_token.py
    ```
-3. E-Mail, Passwort und ggf. 2FA-Code selbst eintippen. Die ausgegebene lange Zeile ist dein Token
-   (ca. 1 Jahr gültig). Wie ein Passwort behandeln.
+3. E-Mail, Passwort und ggf. 2FA-Code selbst eintippen. Ist die GitHub-CLI (`gh`) angemeldet, speichert
+   das Script den Token direkt als Secret `GARMIN_TOKENS`. Sonst (oder mit `--print`) gibt es ihn als lange
+   Zeile aus, die du in 4b einträgst. Wie ein Passwort behandeln.
 
 *Alternative ohne Python:* statt `GARMIN_TOKENS` die Secrets `GARMIN_EMAIL` und `GARMIN_PASSWORD` setzen
 (geht nur ohne 2-Faktor-Anmeldung; dann liegt dein Passwort verschlüsselt in GitHub).
