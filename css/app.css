@@ -408,3 +408,9 @@ h1{font-size:32px;font-weight:750;letter-spacing:-.025em;line-height:1.1}
 @media (min-width:900px){
   .sqnav{display:flex}
 }
+/* ===== More → Claude ===== */
+.cl-steps{margin:8px 0 4px;padding-left:20px;font-size:14px;line-height:1.45}
+.cl-steps li{margin:4px 0}
+.cl-list{margin:6px 0;padding-left:18px;font-size:13.5px;line-height:1.45}
+.cl-list li{margin:3px 0}
+.cl-prev{border-top:1px solid var(--line);margin-top:12px}

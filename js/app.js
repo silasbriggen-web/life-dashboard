@@ -126,10 +126,45 @@ const LW=[
  {n:13,s:'2027-02-01',days:[45,47],topic:'Web scraping with BeautifulSoup, price tracker',proj:'Supplement price tracker: alerts when whey or creatine gets cheaper'},
  {n:14,s:'2027-02-08',days:[72,73],topic:'pandas analysis, charts with Matplotlib',proj:'Finance tracker: bank CSV (BEKB / Yuh), spending by category, savings-rate chart'}
 ];
-const COURSE_TOTAL=LW.reduce((a,w)=>a+w.days.length,0);
-const PROJ_TOTAL=LW.filter(w=>w.proj).length;
+let COURSE_TOTAL=LW.reduce((a,w)=>a+w.days.length,0);
+let PROJ_TOTAL=LW.filter(w=>w.proj).length;
 const KINDS=['Zwift ride','Road ride','Run','Football training','Match','Swim','Walk / hike','Other'];
 const PLAN_OPTS=['A','B','C','FB','MATCH','RIDE','RUN_E','RUN_I','ZW_SS','REST'];
+/* ---------- plan overrides (from your Claude project, see More → Claude) ----------
+   The built-in plan above is the default. state.custom can replace or add session templates, strength exercises,
+   the weekly rhythm (also in phases from a date on), fuel tips, the learning plan and a plan note.
+   It lives in your private data (synced), not in this public code. Applied on load and after every sync. */
+const DEF={PT:JSON.parse(JSON.stringify(PT)),EX:JSON.parse(JSON.stringify(EX)),TNAME:Object.assign({},TNAME),LW:JSON.parse(JSON.stringify(LW)),PLAN_OPTS:PLAN_OPTS.slice()};
+const WEEK_FB=['A','FB','B','FB','C','RIDE','RUN_E'],WEEK_NOFB=['A','RUN_I','B','ZW_SS','C','RIDE','RUN_E'];
+function applyCustom(){
+  const c=(typeof state!=='undefined'&&state&&state.custom)||{};
+  const cp=o=>JSON.parse(JSON.stringify(o));
+  Object.keys(PT).forEach(k=>delete PT[k]);
+  Object.keys(DEF.PT).forEach(k=>{PT[k]=cp(DEF.PT[k]);});
+  Object.keys(c.sessions||{}).forEach(k=>{const v=c.sessions[k];if(v&&v.t)PT[k]=Object.assign({},PT[k]||{},cp(v),{id:k});});
+  Object.keys(EX).forEach(k=>delete EX[k]);
+  Object.keys(DEF.EX).forEach(k=>{EX[k]=cp(DEF.EX[k]);});
+  Object.keys(c.exercises||{}).forEach(k=>{if(Array.isArray(c.exercises[k])&&c.exercises[k].length)EX[k]=cp(c.exercises[k]);});
+  Object.keys(TNAME).forEach(k=>delete TNAME[k]);Object.assign(TNAME,DEF.TNAME);
+  Object.keys(EX).forEach(k=>{
+    if(!TNAME[k]||(c.sessions&&c.sessions[k]))TNAME[k]=(PT[k]&&PT[k].t&&PT[k].t.indexOf(' · ')>0?PT[k].t.split(' · ').slice(1).join(' · '):'')||TNAME[k]||'Strength '+k;
+    if(PT[k]&&PT[k].k==='s'&&!PT[k].tm)PT[k].tm=k;
+  });
+  Object.keys(EXALL).forEach(k=>delete EXALL[k]);
+  Object.keys(EX).forEach(k=>EX[k].forEach(e=>{EXALL[e.id]=e;}));
+  LW.length=0;(Array.isArray(c.learn)&&c.learn.length?c.learn:DEF.LW).forEach(w=>LW.push(cp(w)));
+  COURSE_TOTAL=LW.reduce((a,w)=>a+(w.days||[]).length,0);PROJ_TOTAL=LW.filter(w=>w.proj).length;
+  PLAN_OPTS.length=0;DEF.PLAN_OPTS.concat(Object.keys(c.sessions||{})).forEach(k=>{if(PT[k]&&PLAN_OPTS.indexOf(k)<0&&['PREP','TRIP','DELOAD'].indexOf(k)<0)PLAN_OPTS.push(k);});
+}
+/* the weekly rhythm for day s: the latest phase that has started, else the custom week, else the built-in one */
+function weekFor(s){
+  const c=state.custom||{},fb=s<state.settings.footballEnd;
+  let w=c.week?{week:c.week,weekAfterFootball:c.weekAfterFootball}:null;
+  (c.phases||[]).filter(p=>p&&p.from&&p.from<=s).sort((a,b)=>a.from<b.from?-1:1).forEach(p=>{w=p;});
+  const pick=w?(fb?w.week:(w.weekAfterFootball||w.week)):null;
+  return Array.isArray(pick)&&pick.length===7?pick:(fb?WEEK_FB:WEEK_NOFB);
+}
+const fuelFor=p=>p.fuel||((state.custom||{}).fuel||{})[p.id]||FUEL[p.id]||'';
 const ICONS={
  today:'<circle cx="10" cy="10" r="8"/><path d="M6 10.2l2.7 2.8L14 7.2"/>',
  cal:'<rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8.5h14M7 2.5v3M13 2.5v3"/>',
@@ -194,6 +229,7 @@ function migrate(){
   // done to-dos older than 30 days are removed for good (they are hidden after one day anyway)
   if(Array.isArray(state.todos))state.todos=state.todos.filter(x=>!x.done||x.done>=add(T(),-30));
   Object.keys(state.tomb||{}).forEach(k=>{if(state.tomb[k]<add(T(),-120))delete state.tomb[k];});
+  applyCustom();
 }
 const tombstone=id=>{state.tomb=state.tomb||{};state.tomb[id]=T();};
 /* One-time fresh start: everything entered before TRACK goes (checks, notes, sessions, tests, reviews, measurements),
@@ -238,7 +274,7 @@ function planAuto(s){
   if(s<START)return PT.TRIP;
   if(s>='2026-12-26'&&s<='2027-01-01')return PT.DELOAD;
   const fb=s<state.settings.footballEnd;
-  return PT[['A',fb?'FB':'RUN_I','B',fb?'FB':'ZW_SS','C','RIDE','RUN_E'][dow(s)]];
+  return PT[weekFor(s)[dow(s)]]||PT[(fb?WEEK_FB:WEEK_NOFB)[dow(s)]];
 }
 function planFor(s){
   const o=(state.days[s]||{}).plan;
@@ -554,8 +590,9 @@ function nextUp(s){
 }
 function dayHtml(s){
   const p=planFor(s),d=state.days[s]||{};
-  let h='<section class="card"><div class="lab">Plan for this day</div><div class="ttl">'+esc(p.t)+'</div><p class="muted">'+esc(p.d)+'</p>';
-  if(FUEL[p.id])h+='<p class="sm"><b>Fuel:</b> '+esc(FUEL[p.id])+'</p>';
+  const note=(state.custom||{}).note;
+  let h=(note?'<section class="card note"><b>Plan note</b><p class="sm" style="margin:4px 0 0">'+esc(note)+'</p></section>':'')+'<section class="card"><div class="lab">Plan for this day</div><div class="ttl">'+esc(p.t)+'</div><p class="muted">'+esc(p.d)+'</p>';
+  if(fuelFor(p))h+='<p class="sm"><b>Fuel:</b> '+esc(fuelFor(p))+'</p>';
   h+='<div class="btns">'+(p.k==='s'&&p.tm?'<button class="btn" data-a="tmode" data-m="'+p.tm+'">Log strength '+p.tm+'</button>':p.k==='c'?'<button class="btn" data-a="tmode" data-m="cardio">Log cardio</button>':'')+'<select class="sel" data-chg="planSel" aria-label="Change session"><option value="">Auto plan</option>'+PLAN_OPTS.map(k=>'<option value="'+k+'"'+(d.plan===k?' selected':'')+'>'+esc(PT[k].t)+'</option>').join('')+'</select></div></section>';
   if(p.tests)h+='<section class="card"><div class="lab">Test results</div>'+testsHtml(p,s)+'</section>';
   return h;
@@ -613,7 +650,7 @@ function comingHtml(s){
     let attrs='',sub='';
     if(x.kind==='todo')attrs='data-a="goTodos"';
     else if(x.kind!=='routine')attrs='data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'"';
-    else if(!day&&x.title===p.t&&(p.k==='s'||p.k==='c')){attrs='data-a="goTrain" data-m="'+tmode+'"';if(FUEL[p.id]&&!c.tr.on)sub=FUEL[p.id].split(/\.\s/)[0];}
+    else if(!day&&x.title===p.t&&(p.k==='s'||p.k==='c')){attrs='data-a="goTrain" data-m="'+tmode+'"';if(fuelFor(p)&&!c.tr.on)sub=fuelFor(p).split(/\.\s/)[0];}
     else if(!day&&/^Python/.test(x.title)){const li=learnInfo(s);if(li){attrs='data-a="goLearn" data-n="'+li.lw.n+'"';sub=li.title.replace('Python · ','');}}
     const inner=time+'<span class="lrt"><b>'+esc(x.title)+'</b>'+(sub?'<small>'+esc(sub)+'</small>':'')+'</span>'+(attrs?'<span class="lrr">›</span>':'');
     return attrs?'<button class="lr cu '+x.kind+'" '+attrs+'>'+inner+'</button>':'<div class="lr cu '+x.kind+'">'+inner+'</div>';
@@ -771,7 +808,7 @@ function agendaHtml(s){
   dayItems(s).filter(x=>x.kind!=='routine').sort((a,b)=>(a.start==null?-1:a.start)-(b.start==null?-1:b.start)).forEach(x=>{
     rows.push(lrow(x.title,x.start!=null?mstr(x.start)+(x.end!=null?'–'+mstr(x.end):''):(x.multi?'until '+fmtS(x.ref.until):'all day'),'›','data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'"'));
   });
-  if(FUEL[p.id])rows.push('<div class="lr"><span class="lrt"><b>Fuel</b><small>'+esc(FUEL[p.id])+'</small></span></div>');
+  if(fuelFor(p))rows.push('<div class="lr"><span class="lrt"><b>Fuel</b><small>'+esc(fuelFor(p))+'</small></span></div>');
   rows.push(lrow('Add appointment','For this day','＋','data-a="evnew"'));
   if(done.length)rows.push('<div class="lr adone"><span class="lrt"><b>✓ Done</b><small>'+esc(done.join(' · '))+'</small></span></div>');
   return '<section class="card lrs agenda"><div class="lab" style="padding-top:12px;margin-bottom:0">'+(s===t?'Today’s plan':'Plan for this day')+'</div>'+rows.join('')+'</section>';
@@ -817,7 +854,7 @@ function buildCheckin(m){
   const ss=state.sessions.filter(z=>z.type!=='cardio'&&days.indexOf(z.date)>=0&&sessHasData(z)).sort((a,b)=>a.date<b.date?-1:1);
   L.push('1. Strength:'+(ss.length?'':' none logged'));
   ss.forEach(z=>{
-    const parts=EX[z.type].map(ex=>{const t=setsTxt(ex,z.sets[ex.id]);return t?ex.n+' '+t:null;}).filter(Boolean);
+    const parts=(EX[z.type]||[]).map(ex=>{const t=setsTxt(ex,z.sets[ex.id]);return t?ex.n+' '+t:null;}).filter(Boolean);
     L.push('   '+DAY[dow(z.date)]+' '+z.type+': '+parts.join(' | ')+(z.note?' — '+z.note:''));
   });
   const tests=[];
@@ -853,6 +890,7 @@ function ensureSession(s,tm){
   return z;
 }
 function strengthHtml(tm,s){
+  if(!EX[tm])return '<p class="muted">This session is not in the plan any more.</p>';
   const sess=state.sessions.find(z=>z.date===s&&z.type===tm),last=lastSession(tm,s);
   let h='<section class="card"><div class="lab">Strength '+tm+' · '+TNAME[tm]+'</div><p class="muted">Warm up 8 min first. Leave 1–2 reps in reserve on the main lifts (RPE 7–8).'+(last?' Last time: '+fmtS(last.date)+'.':' First time: start light.')+'</p></section>';
   EX[tm].forEach(ex=>{
@@ -887,14 +925,14 @@ function histHtml(){
   return '<section class="card"><div class="lab">Recent sessions</div>'+all.map(z=>{
     let txt;
     if(z.type==='cardio')txt=z.kind+' · '+(z.min||'?')+' min'+(z.dist?' · '+z.dist+' km':'');
-    else{const n=EX[z.type].filter(ex=>setsTxt(ex,z.sets[ex.id])).length;txt='Strength '+z.type+' · '+n+' exercises';}
+    else{const n=(EX[z.type]||[]).filter(ex=>setsTxt(ex,z.sets[ex.id])).length;txt='Strength '+z.type+' · '+n+' exercises';}
     return '<div class="hist"><span><b>'+fmtD(z.date)+'</b> · '+esc(txt)+'</span>'+armBtn('sess'+z.id,'delSess','data-id="'+z.id+'"')+'</div>';
   }).join('')+'</section>';
 }
 function vTrain(){
   const s=ui.date,m=ui.tmode,p=planFor(s);
   let h=head('Training',fmtD(s),dnav())+storageBanner();
-  h+='<div class="seg">'+['day','A','B','C','cardio','hist'].map(k=>'<button class="'+(m===k?'on':'')+'" data-a="tmode" data-m="'+k+'">'+(k==='day'?'Day':k==='cardio'?'Cardio':k==='hist'?'History':k)+'</button>').join('')+'</div>';
+  h+='<div class="seg">'+['day'].concat(Object.keys(EX),['cardio','hist']).map(k=>'<button class="'+(m===k?'on':'')+'" data-a="tmode" data-m="'+k+'">'+(k==='day'?'Day':k==='cardio'?'Cardio':k==='hist'?'History':k)+'</button>').join('')+'</div>';
   h+='<p class="muted sm" style="margin:-4px 2px 10px">Plan for this day: '+esc(p.t)+'</p>';
   if(m==='day')h+=dayHtml(s);else if(m==='cardio')h+=cardioHtml(s);else if(m==='hist')h+=histHtml();else h+=strengthHtml(m,s);
   return h;
@@ -1507,8 +1545,8 @@ function vPlan(){
 function vMore(){
   const m=ui.mmode;
   let h=head('More','')+storageBanner();
-  h+='<div class="seg">'+[['learn','Learn'],['money','Money'],['stock','Stock'],['setup','Setup']].map(x=>'<button class="'+(m===x[0]?'on':'')+'" data-a="mmode" data-m="'+x[0]+'">'+x[1]+'</button>').join('')+'</div>';
-  return h+(m==='money'?moneyHtml():m==='stock'?stockHtml():m==='setup'?setupHtml():vLearn());
+  h+='<div class="seg">'+[['learn','Learn'],['money','Money'],['stock','Stock'],['claude','Claude'],['setup','Setup']].map(x=>'<button class="'+(m===x[0]?'on':'')+'" data-a="mmode" data-m="'+x[0]+'">'+x[1]+'</button>').join('')+'</div>';
+  return h+(m==='money'?moneyHtml():m==='stock'?stockHtml():m==='setup'?setupHtml():m==='claude'?claudeHtml():vLearn());
 }
 
 /* ================= CALENDAR ================= */
@@ -1685,6 +1723,213 @@ function renderModal(){
    '<div class="fgrid" style="margin-top:8px"><label>Date<input class="in" type="date" id="m-d" value="'+esc(m.date)+'"></label><label>Until (optional)<input class="in" type="date" id="m-u" value="'+esc(m.until)+'"></label><label>Start<input class="in" type="time" id="m-s" value="'+esc(m.start)+'"></label><label>End<input class="in" type="time" id="m-e" value="'+esc(m.end)+'"></label></div>'+
    '<p class="muted sm">No start time means all-day.'+(m.src==='fixed'?' This is a fixed date: saving makes your own copy, deleting hides it.':'')+'</p>'+
    '<div class="btns"><button class="btn" data-a="msave">Save</button><button class="btn ghost" data-a="mclose">Cancel</button>'+(m.src==='new'?'':'<button class="btn warn" data-a="mdel">Delete</button>')+'</div></div></div>';
+}
+
+/* ================= CLAUDE (More → Claude) =================
+   A bridge to your Claude project: "Copy for Claude" gives the chat your real plan and recent data;
+   when Claude changes something it ends its answer with a ```lifedash block, which "Import" previews and applies. */
+const CLAUDE_INSTR=`Du hilfst Silas bei Training, Ernährung, Lernen (Python, Uni) und Alltag. Er nutzt eine eigene App, das "Life dashboard" (iPhone + PC). Sprich Deutsch mit ihm.
+
+DATEN AUS DER APP
+Wenn er einen Text einfügt, der mit "LIFE DASHBOARD EXPORT" beginnt, ist das sein aktueller Stand: Plan, Übungen mit IDs, letzte Trainings, Tests, Gewicht, Schlaf, Ziele, To-dos. Nimm diesen Stand als Wahrheit, auch wenn frühere Chats etwas anderes sagen.
+
+ÄNDERUNGEN ZURÜCK IN DIE APP
+Immer wenn du etwas änderst, das in die App gehört (Trainingsplan, Übungen, Wochenrhythmus, Ernährungstipps, Lernplan, To-dos, Termine, Ziele), beende deine Antwort mit genau EINEM Codeblock mit der Sprache lifedash. Er enthält gültiges JSON und NUR die Teile, die sich ändern. Silas kopiert ihn in die App (More → Claude → Import), sieht eine Vorschau und bestätigt.
+
+Format (alle Felder optional ausser "lifedash"):
+\`\`\`lifedash
+{
+  "lifedash": 1,
+  "summary": "Kurz, was sich ändert (1 Satz)",
+  "note": "Plan-Notiz, z. B. Phase und Fokus der nächsten Wochen",
+  "sessions": {
+    "A": {"t": "Strength A · squat + push", "d": "Beschreibung für den Tag", "k": "s"},
+    "MOB": {"t": "Mobility + core", "d": "30 min ...", "k": "r", "fuel": "optional: Ernährungstipp"}
+  },
+  "exercises": {
+    "A": [
+      {"id": "sq", "n": "Back squat", "s": 4, "r": [5, 8], "rest": "2–3 min", "low": true, "wu": "bar"},
+      {"id": "hlr", "n": "Hanging leg raise", "s": 3, "r": [10, 15], "rest": "60 s", "bw": true}
+    ]
+  },
+  "week": ["A", "FB", "B", "FB", "C", "RIDE", "RUN_E"],
+  "weekAfterFootball": ["A", "RUN_I", "B", "ZW_SS", "C", "RIDE", "RUN_E"],
+  "phases": [{"from": "2026-12-07", "week": ["A", "RUN_I", "B", "ZW_SS", "C", "RIDE", "RUN_E"]}],
+  "days": {"2026-11-21": "RUN_E"},
+  "fuel": {"RIDE": "Pro Stunde 500 ml + 30 g Kohlenhydrate"},
+  "todos": [{"t": "🛒 Kreatin bestellen", "due": "2026-11-20"}],
+  "events": [{"title": "Physio", "date": "2026-11-18", "start": "17:30", "end": "18:15"}],
+  "goals": [{"id": "g4", "t": "Squat 100 kg x 5", "k": "bench", "b": "sq5", "target": 100, "by": "2027-03-31"}]
+}
+\`\`\`
+
+Regeln für den Block:
+- "sessions": Einheiten-Vorlagen. Schlüssel = kurzer Code (A, B, C, FB, MATCH, RIDE, RUN_E, RUN_I, ZW_SS, REST oder neue wie MOB, D). "k": "s" = Kraft (hat Übungen unter "exercises" mit demselben Schlüssel), "c" = Ausdauer/Sport, "r" = Ruhe. "t" Titel, "d" Beschreibung. Nur geänderte oder neue Einheiten schicken.
+- "exercises": pro Kraft-Einheit die KOMPLETTE neue Übungsliste in Reihenfolge. Bestehende Übungen behalten ihre "id" (die App speichert den Verlauf pro id, z. B. sq, bp, cr, bss, lr, hlr, pu, idb, cab, sp, fp, cp, rdl, lp, dip, lat, calf, pal). Neue Übungen bekommen eine neue kurze id. "s" Sätze, "r" [min, max] Wiederholungen (bei "sec": true Sekunden), "rest" Pause als Text, "low": true = Beinübung (Steigerung in 5-kg-Schritten), "bw": true = Körpergewicht + Zusatzgewicht, "wu": "bar" oder "db" = Aufwärmsätze anzeigen.
+- "week": Wochenrhythmus Montag bis Sonntag (7 Codes) solange Fussballtraining läuft, "weekAfterFootball" danach. "phases": ab einem Datum gilt ein anderer Rhythmus. "days": einzelne Tage auf eine Einheit setzen.
+- "todos": neue To-dos. "due" Datum (YYYY-MM-DD) oder weglassen; "time": "HH:MM" bei festen Terminen. "events": Termine im Kalender.
+- "goals": Ziele (gleiche "id" = ersetzen). "k": "bench" (mit "b" = Test-id wie k5, sq5, bp5, pullups, ftp, vo2, rhr), "weight", "learn" oder "manual".
+- Texte im Block (Titel, Beschreibungen) auf Englisch, weil die App englisch ist. To-dos dürfen Deutsch sein.
+- Daten immer als YYYY-MM-DD. Keine Kommentare im JSON.
+- Wenn nichts für die App ändert: keinen Block.`;
+function claudeExport(){
+  const t=T(),L=[];
+  L.push('LIFE DASHBOARD EXPORT · '+fmtD(t)+' '+pd(t).getFullYear());
+  L.push('Plan started '+fmtS(START)+' · day '+(diff(START,t)+1)+' · tracking since '+fmtS(TRACK));
+  const c=state.custom||{};
+  if(c.note)L.push('Plan note: '+c.note);
+  if(c.updated)L.push('Last plan change from Claude: '+fmtS(c.updated)+(c.summary?' – '+c.summary:''));
+  L.push('');
+  L.push('## Next 14 days');
+  for(let i=0;i<14;i++){const s=add(t,i),p=planFor(s),o=(state.days[s]||{}).plan;L.push(DAY[dow(s)]+' '+s+': '+(/^T\d/.test(p.id||'')?'TEST':(p.id||''))+' – '+p.t+(o?' (set for this day)':''));}
+  L.push('Weekly rhythm now (Mon–Sun): '+weekFor(t).join(', ')+(t<state.settings.footballEnd?' · football training until '+state.settings.footballEnd:''));
+  L.push('');
+  L.push('## Session templates');
+  Object.keys(PT).filter(k=>['PREP','TRIP'].indexOf(k)<0).forEach(k=>{const p=PT[k];L.push(k+' ['+({s:'strength',c:'cardio/sport',r:'rest'}[p.k]||p.k)+']: '+p.t+' – '+p.d+(fuelFor(p)?' | Fuel: '+fuelFor(p):''));});
+  L.push('');
+  L.push('## Strength exercises (id · name · sets × reps · rest · last time · hint)');
+  Object.keys(EX).forEach(k=>{
+    const last=lastSession(k,add(t,1));
+    L.push(k+' · '+(TNAME[k]||'')+(last?' (last done '+last.date+')':' (not done yet)'));
+    EX[k].forEach(ex=>{
+      const lt=last?setsTxt(ex,last.sets[ex.id]):'',h=last?hintFor(ex,last):null;
+      L.push('  - '+ex.id+' · '+ex.n+' · '+ex.s+'×'+ex.r[0]+'–'+ex.r[1]+(ex.sec?' s':'')+' · '+(ex.rest||'')+(ex.low?' · legs':'')+(ex.bw?' · bodyweight+':'')+(lt?' · last: '+lt:'')+(h?' · '+h.text:''));
+    });
+  });
+  L.push('');
+  L.push('## Tests (latest)');
+  BM.forEach(b=>{const e=(state.bench[b.id]||[]).slice(-1)[0];if(e)L.push(b.n+': '+(b.time?fmtT(e.v):e.v)+(b.u&&!b.time?' '+b.u:'')+' ('+e.date+')');});
+  L.push('');
+  L.push('## This week so far');
+  L.push(buildCheckin(monday(t)));
+  if(monday(t)>TRACK){L.push('');L.push('## Last week');L.push(buildCheckin(add(monday(t),-7)));}
+  L.push('');
+  L.push('## Goals');
+  state.goals.forEach(g=>{const i=goalInfo(g);L.push('- '+g.t+' · now '+goalFmt(g,i.cur)+' · target '+goalFmt(g,g.target)+(g.by?' by '+g.by:'')+(i.reached?' · reached':''));});
+  const open=state.todos.filter(x=>!x.done).sort(todoSort);
+  L.push('');
+  L.push('## Open to-dos ('+open.length+')');
+  open.slice(0,15).forEach(x=>L.push('- '+x.t+(x.due?' · '+(x.on?'on ':'by ')+x.due+(x.time?' '+x.time:''):'')));
+  L.push('');
+  L.push('To change the plan, end your answer with a ```lifedash block (see the project instructions).');
+  return L.join('\n');
+}
+/* ---------- import ---------- */
+function clParse(text){
+  const src=String(text||'');
+  let raw=null;
+  const m=src.match(/```\s*lifedash\s*([\s\S]*?)```/i)||src.match(/```\s*json\s*([\s\S]*?"lifedash"[\s\S]*?)```/i);
+  if(m)raw=m[1];
+  else{const a=src.indexOf('{'),b=src.lastIndexOf('}');if(a>=0&&b>a)raw=src.slice(a,b+1);}
+  if(!raw)return {err:'No lifedash block found. Copy Claude’s whole answer or just the block.'};
+  let o;try{o=JSON.parse(raw);}catch(e){return {err:'The block is not valid JSON ('+e.message+'). Ask Claude to send it again.'};}
+  if(!o||typeof o!=='object'||!o.lifedash)return {err:'This is JSON, but not a lifedash block.'};
+  const out={summary:String(o.summary||''),warn:[]},isDate=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||''));
+  const slug=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'').slice(0,8)||'ex'+Math.random().toString(36).slice(2,6);
+  if(o.note!=null)out.note=String(o.note);
+  if(o.sessions&&typeof o.sessions==='object'){
+    out.sessions={};
+    Object.keys(o.sessions).forEach(k=>{const v=o.sessions[k]||{},key=String(k).toUpperCase().replace(/[^A-Z0-9_]/g,'');if(!key||!v.t){out.warn.push('Session '+k+' skipped (no title)');return;}
+      out.sessions[key]={t:String(v.t),d:String(v.d||''),k:['s','c','r'].indexOf(v.k)>=0?v.k:'c'};if(v.fuel)out.sessions[key].fuel=String(v.fuel);});
+  }
+  if(o.exercises&&typeof o.exercises==='object'){
+    out.exercises={};
+    Object.keys(o.exercises).forEach(k=>{
+      const key=String(k).toUpperCase().replace(/[^A-Z0-9_]/g,''),L=o.exercises[k];
+      if(!Array.isArray(L)||!L.length){out.warn.push('Exercises for '+k+' skipped (empty)');return;}
+      out.exercises[key]=L.map(e=>{
+        let r=Array.isArray(e.r)?e.r.map(Number):[Number(e.r)||8,Number(e.r)||8];if(r.length<2)r=[r[0],r[0]];
+        const x={id:String(e.id||slug(e.n)),n:String(e.n||e.id||'Exercise'),s:Math.max(1,Math.min(10,parseInt(e.s,10)||3)),r:[r[0]||1,r[1]||r[0]||1],rest:String(e.rest||'90 s')};
+        if(e.low)x.low=1;if(e.bw)x.bw=1;if(e.sec)x.sec=1;if(e.wu==='bar'||e.wu==='db')x.wu=e.wu;
+        return x;
+      });
+    });
+  }
+  const knownKey=k=>!!(PT[k]||(out.sessions&&out.sessions[k]));
+  const wk=(a,name)=>{if(!Array.isArray(a))return undefined;const w=a.map(x=>String(x).toUpperCase());if(w.length!==7||!w.every(knownKey)){out.warn.push(name+' skipped (needs 7 known session codes)');return undefined;}return w;};
+  if(o.week)out.week=wk(o.week,'week');
+  if(o.weekAfterFootball)out.weekAfterFootball=wk(o.weekAfterFootball,'weekAfterFootball');
+  if(Array.isArray(o.phases)){out.phases=o.phases.map(p=>({from:p.from,week:wk(p.week,'phase week'),weekAfterFootball:p.weekAfterFootball?wk(p.weekAfterFootball,'phase weekAfterFootball'):undefined})).filter(p=>isDate(p.from)&&p.week);}
+  if(o.days&&typeof o.days==='object'){out.days={};Object.keys(o.days).forEach(d=>{const k=String(o.days[d]).toUpperCase();if(isDate(d)&&knownKey(k))out.days[d]=k;else out.warn.push('Day '+d+' skipped');});}
+  if(o.fuel&&typeof o.fuel==='object'){out.fuel={};Object.keys(o.fuel).forEach(k=>{out.fuel[String(k).toUpperCase()]=String(o.fuel[k]);});}
+  if(Array.isArray(o.learn)&&o.learn.length)out.learn=o.learn.filter(w=>w&&isDate(w.s)).map((w,i)=>({n:w.n||i+1,s:w.s,days:Array.isArray(w.days)?w.days.map(Number):[],topic:String(w.topic||''),proj:w.proj?String(w.proj):null}));
+  if(Array.isArray(o.todos))out.todos=o.todos.filter(x=>x&&x.t).map(x=>({t:String(x.t),due:isDate(x.due)?x.due:null,time:/^\d{1,2}:\d{2}$/.test(x.time||'')?x.time:null,on:!!x.on}));
+  if(Array.isArray(o.events))out.events=o.events.filter(e=>e&&e.title&&isDate(e.date)).map(e=>({title:String(e.title),date:e.date,until:isDate(e.until)?e.until:'',start:/^\d{1,2}:\d{2}$/.test(e.start||'')?e.start:'',end:/^\d{1,2}:\d{2}$/.test(e.end||'')?e.end:''}));
+  if(Array.isArray(o.goals))out.goals=o.goals.filter(g=>g&&g.t).map(g=>({id:String(g.id||('g'+Date.now().toString(36))),t:String(g.t),k:['bench','weight','learn','manual'].indexOf(g.k)>=0?g.k:'manual',b:g.b?String(g.b):undefined,target:g.target!=null?Number(g.target):undefined,by:isDate(g.by)?g.by:undefined}));
+  return out;
+}
+/* what would change, as readable lines */
+function clDiff(x){
+  const L=[],exTxt=e=>e.n+' '+e.s+'×'+e.r[0]+'–'+e.r[1]+(e.sec?' s':'');
+  if(x.note!=null)L.push('Plan note: “'+x.note+'”');
+  Object.keys(x.sessions||{}).forEach(k=>{const o=PT[k],n=x.sessions[k];L.push((o?'Session '+k+' changed: ':'New session '+k+': ')+n.t+(o&&o.d!==n.d?' – '+n.d:''));});
+  Object.keys(x.exercises||{}).forEach(k=>{
+    const old=EX[k]||[],nw=x.exercises[k],oi={};old.forEach(e=>oi[e.id]=e);const ni={};nw.forEach(e=>ni[e.id]=e);
+    const ch=[];
+    nw.forEach(e=>{const o=oi[e.id];if(!o)ch.push('+ '+exTxt(e));else if(exTxt(o)!==exTxt(e)||o.rest!==e.rest)ch.push(exTxt(o)+' → '+exTxt(e)+(o.rest!==e.rest?' ('+e.rest+')':''));});
+    old.forEach(e=>{if(!ni[e.id])ch.push('− '+e.n);});
+    if(!ch.length&&old.map(e=>e.id).join()!==nw.map(e=>e.id).join())ch.push('new order');
+    L.push((old.length?'Strength '+k+': ':'New strength '+k+': ')+(ch.length?ch.join(' · '):'no change'));
+  });
+  const wkLine=(name,nw,old)=>{const d=[];nw.forEach((k,i)=>{if(k!==old[i])d.push(DAY[i]+' '+old[i]+' → '+k);});L.push(name+': '+(d.length?d.join(', '):'no change'));};
+  if(x.week)wkLine('Week (football season)',x.week,(state.custom&&state.custom.week)||WEEK_FB);
+  if(x.weekAfterFootball)wkLine('Week (after football)',x.weekAfterFootball,(state.custom&&state.custom.weekAfterFootball)||WEEK_NOFB);
+  (x.phases||[]).forEach(p=>L.push('From '+fmtS(p.from)+': '+p.week.join(', ')));
+  Object.keys(x.days||{}).forEach(d=>L.push(fmtD(d)+': '+(planFor(d).id||'')+' → '+x.days[d]));
+  Object.keys(x.fuel||{}).forEach(k=>L.push('Fuel '+k+': '+x.fuel[k]));
+  if(x.learn)L.push('Learning plan replaced: '+x.learn.length+' weeks');
+  if(x.todos&&x.todos.length)L.push(x.todos.length+' new to-do'+(x.todos.length>1?'s':'')+': '+x.todos.map(t=>t.t).slice(0,4).join(' · ')+(x.todos.length>4?' …':''));
+  if(x.events&&x.events.length)L.push(x.events.length+' appointment'+(x.events.length>1?'s':'')+': '+x.events.map(e=>e.title+' '+fmtS(e.date)).join(' · '));
+  (x.goals||[]).forEach(g=>L.push((state.goals.some(o=>o.id===g.id)?'Goal updated: ':'New goal: ')+g.t));
+  return L;
+}
+function clApply(x){
+  const c=state.custom=state.custom||{};
+  if(x.note!=null)c.note=x.note;
+  if(x.sessions)c.sessions=Object.assign({},c.sessions||{},x.sessions);
+  if(x.exercises)c.exercises=Object.assign({},c.exercises||{},x.exercises);
+  if(x.week)c.week=x.week;
+  if(x.weekAfterFootball)c.weekAfterFootball=x.weekAfterFootball;
+  if(x.phases&&x.phases.length){const ph=(c.phases||[]).filter(p=>!x.phases.some(q=>q.from===p.from));c.phases=ph.concat(x.phases);}
+  Object.keys(x.days||{}).forEach(d=>{state.days[d]=state.days[d]||{};state.days[d].plan=x.days[d];});
+  if(x.fuel)c.fuel=Object.assign({},c.fuel||{},x.fuel);
+  if(x.learn)c.learn=x.learn;
+  const have=new Set(state.todos.filter(t=>!t.done).map(t=>t.t.toLowerCase()));
+  (x.todos||[]).forEach((t,i)=>{if(have.has(t.t.toLowerCase()))return;state.todos.push({id:'tdc'+Date.now().toString(36)+i,t:t.t,due:t.due,time:t.time,on:t.on||!!t.time,month:false,done:null});});
+  (x.events||[]).forEach((e,i)=>{if(state.events.some(o=>o.title===e.title&&o.date===e.date))return;state.events.push(Object.assign({id:'e'+Date.now()+i},e));});
+  (x.goals||[]).forEach(g=>{const i=state.goals.findIndex(o=>o.id===g.id);const ng=Object.assign({created:T()},i>=0?state.goals[i]:{},JSON.parse(JSON.stringify(g)));if(i>=0)state.goals[i]=ng;else state.goals.push(ng);});
+  c.updated=T();if(x.summary)c.summary=x.summary;
+  c.log=[{date:T(),summary:x.summary||clDiff(x).slice(0,2).join(' · ')}].concat(c.log||[]).slice(0,8);
+  applyCustom();
+}
+function claudeHtml(){
+  const c=state.custom||{};
+  let h='<section class="card"><div class="lab">Your Claude project</div><p class="muted sm">Work on your plans in the Claude project “silas” and keep the app in step:</p>'
+    +'<ol class="cl-steps"><li><b>Copy for Claude</b> and paste it into a chat in the project. Claude then sees your real plan and the last weeks.</li><li>When Claude changes something, its answer ends with a <b>lifedash</b> block.</li><li>Copy the answer (or just the block), paste it below, check the preview, apply.</li></ol>'
+    +'<div class="btns"><button class="btn" data-a="clCopy">Copy for Claude</button></div>'
+    +(ui.clOut?'<textarea class="in full" readonly style="margin-top:10px">'+esc(ui.clOut)+'</textarea>':'')+'</section>';
+  h+='<section class="card"><div class="lab">Import from Claude</div><textarea id="cl-imp" class="in full" placeholder="Paste Claude’s answer or the ```lifedash block here"></textarea><div class="btns"><button class="btn" data-a="clCheck">Check</button>'+(ui.clPrev?'<button class="btn ghost" data-a="clCancel">Cancel</button>':'')+'</div>';
+  if(ui.clErr)h+='<p class="sm" style="color:var(--bad);margin-top:10px">'+esc(ui.clErr)+'</p>';
+  if(ui.clPrev){
+    const d=clDiff(ui.clPrev);
+    h+='<div class="cl-prev"><div class="lab" style="margin-top:12px">Preview</div>'+(ui.clPrev.summary?'<p class="sm"><b>'+esc(ui.clPrev.summary)+'</b></p>':'')
+      +(d.length?'<ul class="cl-list">'+d.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'<p class="muted sm">Nothing to change.</p>')
+      +(ui.clPrev.warn.length?'<p class="sm" style="color:var(--warn)">'+esc(ui.clPrev.warn.join(' · '))+'</p>':'')
+      +(d.length?'<div class="btns"><button class="btn" data-a="clApply">Apply changes</button></div>':'')+'</div>';
+  }
+  h+='</section>';
+  h+='<section class="card"><div class="lab">Plan changes</div>';
+  if(c.updated){
+    h+=(c.note?'<p class="sm"><b>Plan note:</b> '+esc(c.note)+'</p>':'')+'<ul class="cl-list">'+(c.log||[]).map(l=>'<li><b>'+esc(fmtS(l.date))+'</b> · '+esc(l.summary||'')+'</li>').join('')+'</ul>';
+    h+='<div class="btns"><button class="btn warn" data-a="clReset">'+(ui.armed==='clReset'?'Tap again: back to the built-in plan':'Back to the built-in plan')+'</button></div><p class="muted sm">To-dos, appointments and goals stay; only sessions, exercises, rhythm, fuel and learning plan go back. Your logged sessions are kept.</p>';
+  }else h+='<p class="muted sm">No changes from Claude yet – the app uses the built-in plan.</p>';
+  h+='</section>';
+  h+='<section class="card"><div class="lab">Set up the project once</div><p class="muted sm">claude.ai → Projects → <b>silas</b> → <b>Instructions</b> (“Set project instructions”) → paste this text → Save. From then on Claude knows the app and answers with lifedash blocks.</p><div class="btns"><button class="btn ghost" data-a="clInstr">Copy project instructions</button></div></section>';
+  return h;
+}
+async function clClip(text,msg){
+  try{await navigator.clipboard.writeText(text);ui.clOut=null;toast(msg);}
+  catch(e){ui.clOut=text;render();toast('Select the text below and copy it');}
 }
 
 /* ================= render + actions ================= */
@@ -1919,6 +2164,12 @@ const ACT={
  doneTog:()=>{ui.dn=!ui.dn;render();},
  allcTog:()=>{ui.allc=!ui.allc;render();},
  tdnTog:()=>{ui.tdn=!ui.tdn;render();},
+ clCopy:()=>clClip(claudeExport(),'Copied – paste it into your Claude chat'),
+ clInstr:()=>clClip(CLAUDE_INSTR,'Instructions copied'),
+ clCheck:()=>{const v=($('#cl-imp')||{}).value||'';const r=clParse(v);if(r.err){ui.clErr=r.err;ui.clPrev=null;}else{ui.clErr='';ui.clPrev=r;}render();},
+ clCancel:()=>{ui.clPrev=null;ui.clErr='';render();},
+ clApply:()=>{if(!ui.clPrev)return;clApply(ui.clPrev);ui.clPrev=null;save();render();toast('Plan updated from Claude');},
+ clReset:()=>{if(!arm('clReset'))return;const c=state.custom||{};state.custom={log:[{date:T(),summary:'Back to the built-in plan'}].concat(c.log||[]).slice(0,8)};applyCustom();save();render();toast('Built-in plan restored');},
  tdEdit:t=>{ui.tdEdit=ui.tdEdit===t.dataset.id?null:t.dataset.id;render();},
  tdBulkTog:()=>{ui.tdBulk=!ui.tdBulk;render();if(ui.tdBulk){const el=$('#td-bulk');if(el)el.focus();}},
  todoBulk:()=>{

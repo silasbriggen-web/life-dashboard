@@ -136,6 +136,20 @@ Von Hand eingetippte Gewichte gewinnen immer, die Waage gewinnt gegen Garmin.
 Ab dann: auf die Waage, Zepp Life kurz öffnen (synchronisiert die Messung), schliessen – das Gewicht steht
 nach dem nächsten Öffnen in der App. Neuer Key unter More → Setup macht den alten ungültig.
 
+## 6. Claude-Projekt „silas“ (Pläne im Chat bearbeiten)
+
+Die App und dein Claude-Projekt tauschen Daten per Kopieren aus:
+
+1. Einmalig: App → **More → Claude → Copy project instructions** und in claude.ai → Projects → silas →
+   **Instructions** einfügen.
+2. **Copy for Claude** (More → Claude) kopiert deinen Stand (Plan, Übungen mit IDs, letzte Wochen, Tests,
+   Ziele, To-dos) – im Chat einfügen.
+3. Ändert Claude etwas, endet die Antwort mit einem ` ```lifedash `-Block. Antwort kopieren → **More → Claude →
+   Import** → *Check* zeigt die Vorschau → *Apply changes*.
+
+Geänderte Pläne liegen in deinen Daten (`state.custom`, synchronisiert), nicht im öffentlichen Code.
+*Back to the built-in plan* setzt Einheiten, Übungen, Rhythmus, Fuel und Lernplan zurück.
+
 ## 8. Push-Erinnerungen (auch bei geschlossener App)
 
 Die App berechnet laufend, was wann fällig wird (dieselbe Logik wie die Karte „To do now“), und legt
