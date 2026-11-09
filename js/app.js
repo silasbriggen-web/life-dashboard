@@ -286,53 +286,132 @@ function streaks(){
 }
 /* ---------- side quests: 3 optional life-optimisation challenges per day ----------
    The pick is fixed per date (same on every device), from 3 different categories, never yesterday's.
-   Flags: we = weekend only, wd = weekdays only. They don't count towards the day's points. */
+   Each quest: [id, title, how, category, flag, why, when]. Flags: we = weekend only, wd = weekdays only.
+   They don't count towards the day's points. Ids never change, so old ticks keep counting. */
 const SQ=[
- ['cold','Cold shower','Last 2 minutes ice cold. Breathe slowly through it.','body'],
- ['plunge','Ice bath','3 min in the lake or a tub of cold water. Never alone in open water.','body','we'],
- ['sun','Morning light','10 min outside within 30 min of waking, no sunglasses.','body'],
- ['walk','Walk after lunch','10–15 min walk right after eating.','body'],
- ['mob','Mobility 10 min','Hips, thoracic spine, ankles. Before bed is fine.','body'],
- ['nosug','No added sugar','No sweets, soft drinks or desserts today.','body'],
- ['nocaf','No caffeine after 13:00','Better sleep tonight.','body'],
- ['veg','Veggies at every meal','Something green with breakfast, lunch and dinner.','body'],
- ['stairs','Stairs only','No lifts or escalators all day.','body'],
- ['med','Meditate 15 min','Sit, eyes closed, follow the breath. An app is fine.','mind'],
- ['journ','Journal one page','What happened, what you felt, what you learned.','mind'],
- ['grat','3 things you are grateful for','Write them down, be specific.','mind'],
- ['breath','Box breathing 5 min','4 s in, 4 hold, 4 out, 4 hold.','mind'],
- ['read','Read 20 pages','A book, not a feed.','mind'],
- ['nsdr','Nap or NSDR 20 min','Lie down after lunch: power nap or a yoga nidra track.','mind'],
- ['nophone2','2 hours without phone','Flight mode or in another room. Pick the block now.','focus'],
- ['wake','First hour phone-free','No phone for 60 min after waking.','focus'],
- ['nosoc','No social media today','Instagram, TikTok, YouTube shorts: all off.','focus'],
- ['deep','90 min deep work','One task, notifications off, timer on.','focus'],
- ['screens','No screens 1 h before bed','Read, stretch or talk instead.','focus'],
- ['grey','Phone in greyscale','All day. Makes scrolling boring.','focus'],
- ['dread','Do the dreaded task','The thing you keep postponing. Start with 5 minutes.','focus'],
- ['call','Call someone','A friend or family member. A real call, not texting.','social'],
- ['old','Reach out to an old friend','Someone you haven\'t talked to in 6+ months.','social'],
- ['compl','Give a real compliment','To a colleague, friend or stranger.','social'],
- ['new','Talk to someone new','Start a conversation with someone you don\'t know.','social'],
- ['favor','Unasked favour','Help someone without being asked.','social'],
- ['plan','Plan a meetup','Fix a date with friends for this week or next.','social'],
- ['eat','Eat with someone, no phones','A meal with people, phones away.','social'],
- ['nohead','30 min outside, no headphones','Just walk and look around.','outside'],
- ['sunset','Watch the sunset','Or the sunrise. 10 minutes, no photos.','outside'],
- ['newpl','Go somewhere new','A street, park, café or trail you have never been to.','outside'],
- ['hike','Hike 2+ hours','Get into the mountains or the woods.','outside','we'],
- ['bike','Ride somewhere instead of driving','Bike or walk for one trip you would normally drive.','outside'],
- ['decl','Declutter 15 min','One drawer, your desk or your downloads folder.','growth'],
- ['cook','Cook a new recipe','Something you have never made.','growth'],
- ['comf','Comfort zone challenge','Do one thing that feels a bit awkward or scary.','growth'],
- ['lect','Learn something for 20 min','A lecture, a podcast episode or a tutorial outside your field.','growth'],
- ['money','Money check 10 min','Look at spending, savings, one subscription to cancel.','growth','wd'],
- ['tmrw','Plan tomorrow tonight','5 min: the 3 most important things for tomorrow.','growth'],
- ['no','Say no to one thing','Protect your time once today.','growth'],
- ['sab','Half-day phone sabbath','4 hours without your phone.','focus','we'],
- ['cookf','Cook for friends','Invite people over and cook.','social','we']
+ // body
+ ['cold','Cold shower','Finish your shower with 2 minutes as cold as it goes. Breathe out long and slow, don’t hold your breath.','body','','A strong lift in alertness and mood for 1–3 hours, and practice in staying calm when something is unpleasant.','Morning. Not in the 6 hours after a strength session: cold right after lifting dampens the muscle-building signal.'],
+ ['plunge','Ice bath','2–4 minutes up to the chest in a lake, river or a tub with ice. Get out when the shivering gets strong.','body','we','A big release of noradrenaline and dopamine (focus and mood for hours) and less soreness after hard endurance days.','Morning, or after a long ride or run – not after strength training. Never alone in open water. Warm up by moving, not with a hot shower straight away.'],
+ ['sun','Morning light','10 minutes outside within 30 minutes of waking, no sunglasses. On grey days 20 minutes.','body','','Sets your body clock: more awake during the day, sleepier at the right time tonight.','In the first hour after waking. Combine it with the walk to the station or a coffee on the balcony.'],
+ ['walk','Walk after lunch','10–15 minutes of easy walking right after eating.','body','','Flattens the blood-sugar spike, helps digestion and beats the afternoon dip.','Right after lunch (or dinner).'],
+ ['mob','Mobility 10 min','Hips, upper back and ankles: 90/90 hip switches, cat-cow, deep squat hold, wall ankle stretch.','body','','Keeps squat and running technique clean and prevents the small niggles that stop training.','Evening, or as a warm-up before training.'],
+ ['stairs','Stairs only','No lifts or escalators all day, whatever the floor.','body','','Free extra movement and a little leg and heart work without planning anything.','All day.'],
+ ['steps','12 000 steps','Easy steps on top of training. Garmin counts them for you.','body','','Easy movement speeds up recovery, helps sleep and lifts mood – without adding fatigue.','Spread over the day: walk calls, get off one stop early.'],
+ ['stretch','Stretch before bed','10 calm minutes: hamstrings, hip flexors, chest, slow breathing.','body','','Calms the nervous system so you fall asleep faster; long-term more mobility.','The last 30 minutes before lights out.'],
+ ['hang','Dead hang 3 × 30 s','Hang from a bar with straight arms, shoulders gently active.','body','','Grip strength (helps pull-ups and deadlifts) and healthier shoulders.','Any time you pass a bar; not right before a heavy pull day.'],
+ ['squat5','5 minutes in a deep squat','Collect 5 minutes in a deep squat over the day, heels down (hold something if needed).','body','','Opens hips and ankles – the positions that desk days slowly take away.','In short bits: while brushing teeth, on a call, watching something.'],
+ ['sauna','Sauna','2–3 rounds of 10–15 minutes, cool down and drink between rounds.','body','we','Deep relaxation, better sleep and a cardiovascular workout while sitting still.','Evening or a rest day. Not with a cold or right after a very hard session.'],
+ ['sleep9','9 hours in bed','Be in bed 9 hours before your alarm. Screens off, room cool and dark.','body','','Sleep is your biggest lever for strength, endurance, mood and learning – more than any supplement.','Tonight: work backwards from the alarm and set a “go to bed” reminder.'],
+ ['eyes','20-20-20 for your eyes','During screen time: every 20 minutes look 20 m away for 20 seconds.','body','wd','Less eye strain and fewer headaches on long screen days.','Work and study blocks.'],
+ ['posture','Hourly posture reset','Every hour: stand up, roll the shoulders back, 5 deep breaths, 10 squats.','body','wd','Breaks up long sitting – back, neck and energy stay better.','Set an hourly reminder for the working day.'],
+ ['nap20','Power nap 20 min','Lie down, eyes closed, alarm at 20 minutes – even if you don’t fall asleep.','body','','Restores alertness and reaction time without the grogginess of a long nap.','Between 13:00 and 15:00. Not after 16:00 or it costs night sleep.'],
+ // food
+ ['nosug','No added sugar','No sweets, soft drinks or desserts today. Fruit is fine.','food','','Steadier energy, fewer cravings tomorrow, and you notice how often sugar sneaks in.','All day – plan a sweet alternative (fruit, yoghurt) for the usual moments.'],
+ ['nocaf','No caffeine after 13:00','Last coffee, cola or energy drink before 13:00.','food','','Caffeine stays in your body for 6+ hours: deeper sleep tonight, even if you fall asleep fine.','From 13:00 on.'],
+ ['veg','Veggies at every meal','Something green or colourful with breakfast, lunch and dinner.','food','','Fibre and micronutrients for recovery and digestion; easier to eat enough without junk.','Every meal – breakfast is the hard one: cucumber, tomatoes, spinach in eggs.'],
+ ['prob','40 g protein breakfast','Eggs, skyr, cottage cheese, a shake – reach 40 g at breakfast.','food','','Makes the 130 g/day goal easy, keeps you full until lunch and supports muscle gain.','Breakfast.'],
+ ['colors','Eat 5 colours','Fruit and veg in 5 different colours today.','food','','Different colours mean different micronutrients and antioxidants.','Spread over the day; berries and peppers make it easy.'],
+ ['home','No takeaway today','Every meal homemade or from the canteen salad bar – no fast food, no delivery.','food','','You control protein, fat and salt, and it saves money.','All day. Decide lunch the evening before.'],
+ ['nojunk','No ultra-processed snacks','No chips, sweets, energy bars or packaged pastries.','food','','Better appetite control and steadier energy – snacks are where most hidden calories hide.','All day. Have nuts, fruit or skyr ready instead.'],
+ ['fish','Fish or omega-3 meal','Salmon, sardines, mackerel or trout for one meal.','food','','Omega-3 fats support heart, joints, brain and recovery.','Lunch or dinner.'],
+ ['slow','Slow dinner','20 minutes for dinner, no screen, put the fork down between bites.','food','','Better digestion and you notice when you’re full.','Dinner.'],
+ ['prep','Meal prep','Cook protein and a carb for the next 2–3 days and portion it.','food','we','Saves time and money and makes eating enough protein automatic on busy days.','Sunday afternoon is ideal.'],
+ ['newveg','A vegetable you never buy','Buy and cook one vegetable you normally ignore.','food','','More variety for your gut and you might find a new favourite.','Grocery shopping today.'],
+ ['water3','3 bottles by 16:00','All three bottles (2.25 l) before 16:00.','food','','Even mild dehydration lowers focus and training performance; front-loading avoids night-time toilet trips.','Morning and early afternoon.'],
+ ['noalc','No alcohol this weekend','Not a drop, even at parties – a fun drink without alcohol is fine.','food','we','Alcohol wrecks sleep quality and recovery for 1–2 nights, even in small amounts.','Friday to Sunday.'],
+ ['newfood','Try a new food','Order or cook something you have never eaten.','food','','Curiosity and variety – and a story to tell.','Lunch or dinner.'],
+ // mind
+ ['med','Meditate 15 min','Sit, eyes closed, follow the breath. When thoughts come, notice and return. An app is fine.','mind','','Trains attention and lowers stress; after a few weeks you react calmer.','Morning before the phone, or after training.'],
+ ['journ','Journal one page','What happened, what you felt, what you learned.','mind','','Writing clears your head and shows patterns you don’t see otherwise.','Evening.'],
+ ['grat','3 things you are grateful for','Write down 3 specific things from today – the more concrete the better.','mind','','Shifts attention to what works; regular practice measurably improves mood.','Before sleep.'],
+ ['breath','Box breathing 5 min','4 s in, 4 s hold, 4 s out, 4 s hold.','mind','','Calms the stress response within minutes – useful before exams, interviews and sleep.','Whenever you feel tense, or before something important.'],
+ ['read','Read 20 pages','A book, not a feed.','mind','','Deep focus practice, new ideas and a calmer evening than scrolling.','Evening instead of the phone.'],
+ ['nsdr','Yoga nidra / NSDR 20 min','Lie down and follow a yoga nidra or NSDR recording.','mind','','Restores energy almost like a nap and helps you fall asleep later.','After lunch, or when you slept badly.'],
+ ['bored','10 minutes of nothing','Sit or walk 10 minutes with no input: no phone, music or podcast.','mind','','Boredom is where ideas and calm come from; it retrains your attention span.','Any time – waiting for the bus counts.'],
+ ['dump','Brain dump','10 minutes: write down everything on your mind, then circle the 3 that matter.','mind','','Empties working memory; you stop carrying open loops around.','Evening, or when you feel overwhelmed.'],
+ ['visual','Visualise it','5 minutes: picture tomorrow’s training, interview or exam going well, in detail.','mind','','Mental rehearsal improves performance and lowers nerves.','Evening before the event.'],
+ ['scan','Body scan before sleep','10 minutes: move attention slowly from toes to head, relaxing each part.','mind','','Switches the body into rest mode – you fall asleep faster.','In bed, lights off.'],
+ ['silent','15 minutes of silence','No talking, no sound, no screen for 15 minutes.','mind','','A reset for an overloaded head.','Afternoon or evening.'],
+ ['wins','Write down 3 wins','3 things you did well today, however small.','mind','','Builds confidence and keeps you motivated on long plans.','Evening.'],
+ ['thanks','Thank-you message','Write someone a message thanking them for something specific.','mind','','Makes them and you feel good, strengthens the relationship.','Any time today.'],
+ // focus
+ ['nophone2','2 hours without phone','Flight mode or phone in another room. Pick the block now.','focus','','Shows you how often you reach for it out of habit, and gives you 2 hours of real focus.','A study, work or family block.'],
+ ['wake','First hour phone-free','No phone for 60 minutes after waking.','focus','','You start the day on your terms instead of in other people’s messages.','Morning – charge it outside the bedroom.'],
+ ['nosoc','No social media today','Instagram, TikTok, YouTube shorts: all off.','focus','','More time, calmer head, and it resets the urge to check.','All day. Log out or move the apps off the home screen.'],
+ ['deep','90 min deep work','One task, notifications off, timer on.','focus','','Hard things (Python, applications, studying) only move in long focused blocks.','Your best energy time – mostly morning.'],
+ ['screens','No screens 1 h before bed','Read, stretch, talk or prepare tomorrow instead.','focus','','Less light and less stimulation: you fall asleep faster and sleep deeper.','The last hour before lights out.'],
+ ['grey','Phone in greyscale','Settings → Accessibility → Display → Colour filters → Greyscale, all day.','focus','','Apps lose their pull – scrolling gets boring fast.','All day.'],
+ ['dread','Do the dreaded task','The thing you keep postponing. Start with 5 minutes.','focus','','Postponed tasks cost energy every day; getting it done is a relief.','First thing in your day, before anything else.'],
+ ['sab','Half-day phone sabbath','4 hours without your phone.','focus','we','A real break from being reachable – you notice the world again.','Saturday or Sunday, morning or afternoon.'],
+ ['inbox','Inbox zero','Clear e-mails and messages: reply, archive or turn into a to-do.','focus','wd','Nothing important gets lost and your head is lighter.','One 30-minute block, not all day.'],
+ ['single','Single-task day','One app, one tab, one task at a time – all day.','focus','','Multitasking costs time and errors; single-tasking feels slower but is faster.','All day.'],
+ ['nostream','No streaming today','No YouTube, Netflix or similar – read, train, meet people instead.','focus','','Frees 1–3 hours you usually don’t notice losing.','All day.'],
+ ['pomo','4 Pomodoros','4 × 25 minutes focused work, 5 minutes break between.','focus','wd','A simple structure that gets you started and keeps the pace.','Python or study time.'],
+ ['notif','Notification clean-up','Turn off every notification that isn’t from a person.','focus','','Fewer interruptions every day, permanently.','15 minutes, once.'],
+ ['bedph','Phone sleeps outside','The phone charges outside the bedroom tonight. Use a real alarm clock or the watch.','focus','','No late scrolling, no checking at night or first thing in the morning.','Tonight.'],
+ ['block','Time-block tomorrow','Put tomorrow’s tasks as blocks in the calendar.','focus','','Decisions made in advance – tomorrow you just follow the plan.','Evening, 10 minutes.'],
+ ['twomin','2-minute sweep','15 minutes: do every task that takes under 2 minutes.','focus','','Clears dozens of tiny open loops at once.','Afternoon low-energy time.'],
+ ['nopod','No headphones all day','No music or podcasts on the way – just think or look around.','focus','','Space for your own thoughts; you notice more around you.','All day.'],
+ // social
+ ['call','Call someone','A friend or family member. A real call, not texting.','social','','Voice connects much more than text; it costs 10 minutes and makes both days better.','On a walk or the way home.'],
+ ['old','Reach out to an old friend','Someone you haven’t talked to in 6+ months.','social','','Old friendships fade without contact – one message often revives them.','Any time today.'],
+ ['compl','Give a real compliment','To a colleague, friend or stranger – specific and honest.','social','','Makes someone’s day and trains you to notice the good in people.','Any time today.'],
+ ['new','Talk to someone new','Start a conversation with someone you don’t know.','social','','Builds social confidence; most people are friendlier than expected.','Training, café, queue, uni info day.'],
+ ['favor','Unasked favour','Help someone without being asked.','social','','Helping others is one of the most reliable mood boosts there is.','Any time today.'],
+ ['plan','Plan a meetup','Fix a date with friends for this week or next – actually in the calendar.','social','','Time with friends doesn’t happen by itself; planning it does.','Today, by message.'],
+ ['eat','Eat with someone, no phones','A meal with people, phones away.','social','','Real conversation, better digestion, closer relationships.','Lunch or dinner.'],
+ ['cookf','Cook for friends','Invite people over and cook.','social','we','Hosting builds friendships faster than anything else.','Saturday or Sunday evening.'],
+ ['story','Ask for a story','Ask a parent or grandparent about their life – something you don’t know yet.','social','','You learn where you come from, and they love being asked.','Next time you see or call them.'],
+ ['surprise','Small surprise for your girlfriend','A note, her favourite snack, a plan for the weekend – something small and unexpected.','social','','Small gestures keep a relationship warm more than big occasions.','Any time today.'],
+ ['listen','Only listen','In one conversation: ask questions and listen, don’t talk about yourself.','social','','People feel understood, and you learn more.','Any conversation today.'],
+ ['trainbud','Train with someone','Invite a friend to a session or a run.','social','','More fun, more effort, and a fixed date makes you show up.','Your next session.'],
+ ['familyc','Cook for the family','Make dinner for your family.','social','wd','A real help at home and good cooking practice.','Dinner.'],
+ ['voice','3 voice messages','Send three friends a short voice message: how are you, what’s new.','social','','Keeps friendships alive with almost no effort.','On a walk.'],
+ ['games','Game night','Board game, cards or a quiz with people – screens off.','social','we','Laughing together is the best stress relief.','Evening.'],
+ ['teach','Teach someone something','Show someone a skill you have: a Python trick, an exercise, a recipe.','social','','Teaching is the fastest way to learn something properly yourself.','Any time today.'],
+ // outside
+ ['nohead','30 min outside, no headphones','Just walk and look around.','outside','','Nature and quiet lower stress; ideas come on their own.','Lunch break or evening.'],
+ ['sunset','Watch the sunset','10 minutes, no photos, just watch.','outside','','A daily pause – and evening light helps your body clock wind down.','Check the time: around 17:00 in winter.'],
+ ['newpl','Go somewhere new','A street, park, café or trail you have never been to.','outside','','New places make days memorable instead of blurring together.','Afternoon or evening.'],
+ ['hike','Hike 2+ hours','Into the mountains or the woods.','outside','we','Long easy movement in nature: endurance, recovery and a clear head.','Saturday or Sunday morning. Check the weather and daylight.'],
+ ['bike','Ride instead of driving','Bike or walk one trip you would normally drive or take the bus for.','outside','','Free training minutes, fresh air, and it’s often just as fast.','One trip today.'],
+ ['forest','30 minutes in the forest','Walk slowly in the forest, phone in the pocket.','outside','','Time among trees lowers stress hormones and blood pressure.','Any time with daylight.'],
+ ['sunrise','Watch the sunrise','Be outside when the sun comes up.','outside','we','A calm, special start that resets your sense of time.','Around 07:30–08:00 in winter.'],
+ ['stars','Look at the stars','10 minutes outside on a clear night, away from lights.','outside','','Perspective – and a quiet end to the day.','Clear evening.'],
+ ['barefoot','Barefoot on grass','10 minutes barefoot on grass or sand.','outside','','Strengthens feet and ankles and simply feels good.','A dry, mild day.'],
+ ['outmeal','Eat outside','Have one meal outside, even if it’s cold – bring a jacket.','outside','','Daylight and fresh air turn a normal meal into a break.','Lunch.'],
+ ['newrun','New running route','Run or ride a route you have never done.','outside','','Keeps training fun and makes the time pass faster.','Your next easy run or ride.'],
+ ['photo','Photo walk','30 minutes, take 10 photos of interesting details (the Charmera is perfect).','outside','','You start seeing your surroundings with fresh eyes.','Golden hour, late afternoon.'],
+ ['swim','Go swimming','Pool or lake – 20 minutes of easy swimming.','outside','','Easy endurance that is gentle on joints and good for breathing.','A rest or easy day.'],
+ // growth
+ ['decl','Declutter 15 min','One drawer, your desk or your downloads folder.','growth','','Less stuff, less searching, calmer room.','Any time today.'],
+ ['cook','Cook a new recipe','Something you have never made.','growth','','Cooking well is a life skill that pays off every day.','Dinner.'],
+ ['comf','Comfort zone challenge','Do one thing that feels a bit awkward or scary.','growth','','Confidence grows by doing slightly scary things, not by thinking about them.','Today – decide what it is now.'],
+ ['lect','Learn something for 20 min','A lecture, podcast or tutorial outside your field.','growth','','Curiosity outside your lane – the best ideas come from combining fields.','Commute or lunch.'],
+ ['money','Money check 10 min','Look at spending, savings and one subscription you could cancel.','growth','wd','Knowing where money goes is the first step to saving for travel and university.','Evening.'],
+ ['tmrw','Plan tomorrow tonight','5 minutes: the 3 most important things for tomorrow.','growth','','You start tomorrow knowing what matters.','Evening.'],
+ ['no','Say no to one thing','Protect your time once today.','growth','','Every yes to something unimportant is a no to your priorities.','Whenever something comes up.'],
+ ['french','10 French words','Learn 10 French words or phrases (Fribourg is bilingual).','growth','','Useful for uni in Fribourg and travel; a small daily dose adds up.','Commute or waiting time.'],
+ ['skill','20 minutes of a new skill','Juggling, drawing, an instrument, a card trick – anything new.','growth','','Learning motor skills keeps the brain flexible and is fun.','Evening.'],
+ ['write','Write 300 words','About something you think about: a plan, an opinion, an idea.','growth','','Writing makes thinking clearer – and it’s practice for uni.','Evening.'],
+ ['uni','Uni research 20 min','Study plans, info days, requirements for Bern or Fribourg.','growth','wd','Your uni decision gets easier the more you know.','A focused 20-minute block.'],
+ ['cv','Update your CV','15 minutes on your CV or LinkedIn: one new skill or project.','growth','wd','Ready when an opportunity comes up.','Any time today.'],
+ ['sell','Sell or donate 3 things','Three things you don’t use: sell them online or give them away.','growth','','Less clutter, a bit of money, and someone else uses it.','Take the photos today.'],
+ ['fix','Fix something broken','The thing you’ve been ignoring: a tyre, a button, a wobbly chair.','growth','','Small repairs remove daily annoyances and teach you something.','Any time today.'],
+ ['invest','Read about investing','15 minutes on ETFs, interest or budgeting.','growth','','Small knowledge, big long-term effect on your money.','Evening.'],
+ ['english','10 pages in English','Read 10 pages of an English book.','growth','','Prepares the English test and builds vocabulary without effort.','Before sleep.'],
+ ['goals3','Goal check','Look at your goals in Progress and do one small step for one of them.','growth','','Goals only move when you touch them regularly.','Evening.'],
+ ['typing','10 minutes touch typing','Practise typing without looking (e.g. keybr.com).','growth','wd','Faster coding and writing for the rest of your life.','Before a Python block.'],
+ // fun
+ ['album','Listen to a full album','Start to finish, doing nothing else.','fun','','Music as an experience instead of background noise.','Evening.'],
+ ['create','Make something','Draw, film, build, write a song – anything with your hands or head.','fun','','Creating instead of consuming is deeply satisfying.','Free evening time.'],
+ ['museum','Museum or exhibition','Visit a museum, gallery or exhibition.','fun','we','New impressions and ideas, and a good date idea.','Saturday or Sunday.'],
+ ['sport','Play a sport for fun','Football, table tennis, climbing – no training plan, just play.','fun','','Play keeps sport fun and uses your body in new ways.','Afternoon or evening.'],
+ ['trip','Plan one trip day','Plan one day of your next trip (Malaysia?) – places, food, route.','fun','','Anticipation is half the fun of travelling.','Evening.'],
+ ['cardtrick','Learn a magic trick','Learn one card or coin trick and show it to someone.','fun','','Fun to learn and a great icebreaker.','Evening.']
 ];
 const SQ_BY={};SQ.forEach(q=>SQ_BY[q[0]]=q);
+const SQ_CAT={body:['💪','Body'],food:['🥗','Food'],mind:['🧠','Mind'],focus:['🎯','Focus'],social:['🤝','Social'],outside:['🌲','Outside'],growth:['📈','Growth'],fun:['🎉','Fun']};
 function sqRng(str){let h=2166136261;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return function(){h+=0x6D2B79F5;let t=h;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}
 function sqOk(q,s){const we=dow(s)>=5;/* dow: 0 = Monday … 6 = Sunday */return !(q[4]==='we'&&!we)&&!(q[4]==='wd'&&we);}
 function sqBase(s,skip){
@@ -351,16 +430,27 @@ function sqPicks(s){
 }
 function sqDone(s){return((state.days[s]||{}).sqd)||[];}
 function sqCount(from,to){let n=0;Object.keys(state.days).forEach(s=>{if(s>=from&&s<=to)n+=sqDone(s).filter(id=>SQ_BY[id]).length;});return n;}
+/* A swipeable card per quest, with dots below. ui.sqi remembers the visible card across re-renders. */
 function sqHtml(s){
   const ids=sqPicks(s),dn=sqDone(s),n=ids.filter(id=>dn.indexOf(id)>=0).length;
-  let h='<section class="card lrs sq"><div class="lab" style="padding-top:12px;margin-bottom:0">Side quests <span class="muted">· optional · '+(n===3?'<b style="color:var(--ok)">all 3 done ✓</b>':n+' of 3')+'</span></div>';
+  if(ui.sqDay!==s){ui.sqDay=s;const f=ids.findIndex(id=>dn.indexOf(id)<0);ui.sqi=f<0?0:f;}
+  let h='<section class="card sq"><div class="sqhd"><div class="lab" style="margin:0">Side quests <span class="muted">· '+(n===3?'<b style="color:var(--ok)">all 3 done ✓</b>':n+' of 3')+'</span></div>'
+    +'<div class="sqnav"><button class="ib" data-a="sqGo" data-d="-1" aria-label="Previous">‹</button><button class="ib" data-a="sqGo" data-d="1" aria-label="Next">›</button></div></div><div class="sqc">';
   ids.forEach((id,i)=>{
-    const q=SQ_BY[id],on=dn.indexOf(id)>=0;
-    h+='<div class="sqr"><button class="chk '+(on?'on':'')+'" data-a="sqTog" data-id="'+id+'"><span class="bx">'+(on?'✓':'')+'</span><span class="lrt"><b>'+esc(q[1])+'</b><small>'+esc(q[2])+'</small></span></button>'
-      +(on?'':'<button class="ib" data-a="sqSwap" data-i="'+i+'" aria-label="Other quest" title="Other quest">↻</button>')+'</div>';
+    const q=SQ_BY[id],on=dn.indexOf(id)>=0,c=SQ_CAT[q[3]]||['✨',''];
+    h+='<div class="sqs'+(on?' done':'')+'" data-i="'+i+'"><div class="sqcat">'+c[0]+' '+esc(c[1])+(q[4]==='we'?' · weekend':'')+'</div>'
+      +'<div class="sqt">'+esc(q[1])+'</div><p class="sqhow">'+esc(q[2])+'</p>'
+      +(q[5]?'<div class="sqi"><b>Why</b><span>'+esc(q[5])+'</span></div>':'')
+      +(q[6]?'<div class="sqi"><b>When</b><span>'+esc(q[6])+'</span></div>':'')
+      +'<div class="sqb"><button class="btn'+(on?' ghost':'')+'" data-a="sqTog" data-id="'+id+'">'+(on?'✓ Done · undo':'Done')+'</button>'
+      +(on?'':'<button class="btn ghost" data-a="sqSwap" data-i="'+i+'">↻ Swap</button>')+'</div></div>';
   });
+  h+='</div><div class="sqdots">'+ids.map((id,i)=>'<button class="sqd'+(i===ui.sqi?' on':'')+(dn.indexOf(id)>=0?' ok':'')+'" data-a="sqGo" data-i="'+i+'" aria-label="Quest '+(i+1)+'"></button>').join('')+'</div>';
   return h+'</section>';
 }
+function sqSet(i){ui.sqi=i;document.querySelectorAll('#view .sqd').forEach((d,k)=>d.classList.toggle('on',k===i));}
+function sqSync(c){const w=c.clientWidth||1,i=Math.max(0,Math.min(2,Math.round(c.scrollLeft/w)));if(i!==ui.sqi)sqSet(i);}
+function sqRestore(){const c=document.querySelector('#view .sqc');if(c)c.scrollLeft=(ui.sqi||0)*c.clientWidth;}
 function lastSession(tm,before){
   return state.sessions.filter(z=>z.type===tm&&z.date<before&&sessHasData(z)).sort((a,b)=>a.date<b.date?1:-1)[0];
 }
@@ -1604,6 +1694,7 @@ function render(keep){
   v.dataset.tab=ui.tab;
   v.innerHTML=(ui.upd?'<section class="card note upd"><b>New version ready</b><div class="btns"><button class="btn" data-a="doUpdate">Reload now</button></div></section>':'')+VIEWS[ui.tab]();
   $('#tabs').innerHTML=tabsHtml();
+  sqRestore();
   if(keep!==false)window.scrollTo(0,y);
   updBadge();
 }
@@ -1791,7 +1882,22 @@ const ACT={
  chk:t=>{const s=ui.date,id=t.dataset.id;if(dayChecks(s)[id].auto)return;const p='days|'+s+'|c|'+id;setPath(p,!getPath(p));save();render();},
  wchk:t=>{const s=t.dataset.date,id=t.dataset.id;if(id==='wa'){const pw='days|'+s+'|water';setPath(pw,((+getPath(pw)||0)>=3)?0:3);save();render();return;}if(dayChecks(s)[id].auto)return;const p='days|'+s+'|c|'+id;setPath(p,!getPath(p));save();render();},
  t3:t=>{const p='days|'+ui.date+'|t3d|'+t.dataset.i;setPath(p,!getPath(p));save();render();},
- sqTog:t=>{const s=ui.date,id=t.dataset.id,p='days|'+s+'|sqd',a=(getPath(p)||[]).slice(),i=a.indexOf(id);if(i>=0)a.splice(i,1);else{a.push(id);if(a.filter(x=>sqPicks(s).indexOf(x)>=0).length===3)toast('All 3 side quests done 🏆');}setPath(p,a);save();render();},
+ sqTog:t=>{
+   const s=ui.date,id=t.dataset.id,p='days|'+s+'|sqd',a=(getPath(p)||[]).slice(),i=a.indexOf(id),ids=sqPicks(s);let ni=null;
+   if(i>=0)a.splice(i,1);
+   else{
+     a.push(id);
+     if(a.filter(x=>ids.indexOf(x)>=0).length===3)toast('All 3 side quests done 🏆');
+     else{const k=ids.indexOf(id);for(let j=1;j<3;j++){const c=(k+j)%3;if(a.indexOf(ids[c])<0){ni=c;break;}}}
+   }
+   setPath(p,a);save();render();
+   if(ni!=null)setTimeout(()=>{const c=$('#view .sqc');if(c){sqSet(ni);c.scrollTo({left:ni*c.clientWidth,behavior:'smooth'});}},350);
+ },
+ sqGo:t=>{
+   const c=$('#view .sqc');if(!c)return;
+   const i=t.dataset.i!=null?+t.dataset.i:Math.max(0,Math.min(2,(ui.sqi||0)+(+t.dataset.d)));
+   sqSet(i);c.scrollTo({left:i*c.clientWidth,behavior:'smooth'});
+ },
  sqSwap:t=>{
    const s=ui.date,i=+t.dataset.i,cur=sqPicks(s),y=sqBase(add(s,-1));
    const others=cur.filter((x,j)=>j!==i).map(x=>SQ_BY[x][3]);
@@ -1972,12 +2078,13 @@ document.addEventListener('keydown',e=>{
 
 let tx=null,ty=null;
 document.addEventListener('touchstart',e=>{const q=e.touches[0];tx=q.clientX;ty=q.clientY;},{passive:true});
+document.addEventListener('scroll',e=>{const c=e.target;if(c&&c.classList&&c.classList.contains('sqc'))sqSync(c);},true);
 document.addEventListener('touchend',e=>{
   const calSwipe=ui.tab==='cal'&&ui.pmode==='sched'&&isPhone();
   if(tx==null||(ui.tab!=='today'&&!calSwipe)||ui.modal){tx=null;return;}
   const q=e.changedTouches[0],dx=q.clientX-tx,dy=q.clientY-ty;tx=null;
   if(Math.abs(dx)<70||Math.abs(dy)>45)return;
-  if(e.target&&e.target.closest&&e.target.closest('input,textarea,select,.wsc,.dchips'))return;
+  if(e.target&&e.target.closest&&e.target.closest('input,textarea,select,.wsc,.dchips,.sqc'))return;
   if(calSwipe){ACT.cstep(dx<0?1:-1);return;}
   ACT[dx<0?'dnext':'dprev']();
 },{passive:true});
