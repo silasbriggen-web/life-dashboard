@@ -405,38 +405,42 @@ function vToday(){
     if(g[0]==='eve')h+=prepHtml(s);
   });
   h+='</section>'+(s===t?'':infoH);
-  const fsum=[d.sleep!=null?d.sleep+' h sleep':null,d.energy!=null?'energy '+d.energy:null,d.wrist!=null?'wrist '+d.wrist:null,d.asthma!=null?'asthma '+d.asthma:null].filter(Boolean).join(' · ')||'Sleep, energy, wrist, asthma';
-  h+='<section class="card lrs"><button class="lr" data-a="feelTog"><span class="lrt"><b>How do you feel?</b><small>'+esc(fsum)+'</small></span><span class="lrr">'+(ui.feel?'▴':'▾')+'</span></button>';
-  if(ui.feel)h+='<div style="padding:2px 0 14px"><div class="f4">'+
-   [['sleep','Sleep h','decimal'],['energy','Energy 1–10','numeric'],['wrist','Wrist 0–10','numeric'],['asthma','Asthma 0–10','numeric']].map(f=>'<label>'+f[1]+'<input class="in" inputmode="'+f[2]+'" data-bind="days|'+s+'|'+f[0]+'" data-t="n" value="'+esc(d[f[0]]!=null?d[f[0]]:'')+'"></label>').join('')+
+  const fsum=[d.sleep!=null?d.sleep+' h sleep':null,d.energy!=null?'energy '+d.energy+'/10':null].filter(Boolean).join(' · ')||'Sleep, energy, a note';
+  h+='<section class="card lrs"><button class="lr" data-a="feelTog"><span class="lrt"><b>Sleep, energy and note</b><small>'+esc(fsum)+'</small></span><span class="lrr">'+(ui.feel?'▴':'▾')+'</span></button>';
+  if(ui.feel)h+='<div style="padding:2px 0 14px"><div class="fgrid">'+
+   [['sleep','Sleep h','decimal'],['energy','Energy 1–10','numeric']].map(f=>'<label>'+f[1]+'<input class="in" inputmode="'+f[2]+'" data-bind="days|'+s+'|'+f[0]+'" data-t="n" value="'+esc(d[f[0]]!=null?d[f[0]]:'')+'"></label>').join('')+
    '</div><input class="in full" placeholder="Note (optional)" data-bind="days|'+s+'|note" data-t="t" value="'+esc(d.note||'')+'">'+
    ((!wDay&&state.weights[s]==null&&ui.wAny!==s)?'<div class="btns"><button class="ib t" data-a="wAny">Log weight anyway</button></div>':'')+'</div>';
   return h+'</section>';
 }
 /* The day's plan as one list: training, Python, appointments, and whatever this day needs. */
 function agendaHtml(s){
-  const t=T(),w=dow(s),p=planFor(s),c=dayChecks(s),d=state.days[s]||{},rows=[];
+  const t=T(),w=dow(s),p=planFor(s),c=dayChecks(s),rows=[],done=[];
   const short=(x,n)=>{const f=String(x).split(/\.\s|\.$/)[0],m=n||70;return f.length>m?f.slice(0,m-1)+'…':f;};
   const tmode=(p.k==='s'&&p.tm)?p.tm:(p.k==='c'?'cardio':'day');
-  rows.push(lrow(planName(p),short(p.d),c.tr.on&&p.k!=='r'?'✓':'›','data-a="goTrain" data-m="'+tmode+'"',c.tr.on&&p.k!=='r'?'ok':''));
+  // finished things leave the list and only show up in the "Done" line at the bottom
+  const row=(ok,title,html)=>{if(ok)done.push(title);else rows.push(html);};
+  row(c.tr.on&&p.k!=='r',planName(p),lrow(planName(p),short(p.d),'›','data-a="goTrain" data-m="'+tmode+'"'));
   const li=learnInfo(s);
-  if(li)rows.push(lrow(li.title,li.sub,li.done?'✓':'›','data-a="goLearn" data-n="'+li.lw.n+'"',li.done?'ok':''));
+  if(li)row(li.done,li.title.replace('Python · ','Python '),lrow(li.title,li.sub,'›','data-a="goLearn" data-n="'+li.lw.n+'"'));
   if(p.tests){
-    const n=p.tests.filter(id=>(state.bench[id]||[]).some(e=>e.date===s)).length,all=n===p.tests.length;
-    rows.push(lrow('Test results',n+' of '+p.tests.length+' entered',all?'✓':'›','data-a="goTrain" data-m="day"',all?'ok':''));
+    const n=p.tests.filter(id=>(state.bench[id]||[]).some(e=>e.date===s)).length;
+    row(n===p.tests.length,'Test results',lrow('Test results',n+' of '+p.tests.length+' entered','›','data-a="goTrain" data-m="day"'));
   }
-  const wDay=w===0||w===2||w===4,wInNow=s===t&&wDay&&state.weights[s]==null&&nowMin()>=wakeMin(s); // then it sits in "To do now"
-  if((wDay||state.weights[s]!=null||ui.wAny===s)&&!wInNow){
+  const wDay=w===0||w===2||w===4,wInNow=s===t&&wDay&&nowMin()>=wakeMin(s); // then it sits in "To do now"
+  if(state.weights[s]!=null){if(s!==t)done.push('Weigh-in '+state.weights[s]+' kg');}
+  else if((wDay||ui.wAny===s)&&!wInNow){
     const wl=Object.keys(state.weights).filter(k=>state.weights[k]!=null&&k<s).sort().pop();
-    rows.push('<div class="lr"><span class="lrt"><b>Weigh-in</b><small>Fasted'+(wl?' · last '+state.weights[wl]+' kg':'')+'</small></span><input class="in w" inputmode="decimal" placeholder="kg" data-bind="weights|'+s+'" data-t="n" value="'+esc(state.weights[s]!=null?state.weights[s]:'')+'"></div>');
+    rows.push('<div class="lr"><span class="lrt"><b>Weigh-in</b><small>Fasted'+(wl?' · last '+state.weights[wl]+' kg':'')+'</small></span><input class="in w" inputmode="decimal" placeholder="kg" data-bind="weights|'+s+'" data-t="n"></div>');
   }
-  if(w===6&&s>=START){const n=sunDone(s),N=sunList().length;rows.push(lrow('Sunday reset and check-in',n+' of '+N+' done · check-in at 17:00',n===N?'✓':'›','data-a="goWeek"',n===N?'ok':''));}
+  if(w===6&&s>=START){const n=sunDone(s),N=sunList().length;row(n===N,'Sunday reset',lrow('Sunday reset and check-in',n+' of '+N+' done · check-in at 17:00','›','data-a="goWeek"'));}
   if(w===6&&s>=START&&pd(s).getDate()<=7&&s>='2026-12-01')rows.push(lrow('Monthly check-in','+30 min · measurements, photos, benchmarks','›','data-a="goBody"'));
   dayItems(s).filter(x=>x.kind!=='routine').sort((a,b)=>(a.start==null?-1:a.start)-(b.start==null?-1:b.start)).forEach(x=>{
     rows.push(lrow(x.title,x.start!=null?mstr(x.start)+(x.end!=null?'–'+mstr(x.end):''):(x.multi?'until '+fmtS(x.ref.until):'all day'),'›','data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'"'));
   });
   if(FUEL[p.id])rows.push('<div class="lr"><span class="lrt"><b>Fuel</b><small>'+esc(FUEL[p.id])+'</small></span></div>');
   rows.push(lrow('Add appointment','For this day','＋','data-a="evnew"'));
+  if(done.length)rows.push('<div class="lr adone"><span class="lrt"><b>✓ Done</b><small>'+esc(done.join(' · '))+'</small></span></div>');
   return '<section class="card lrs agenda"><div class="lab" style="padding-top:12px;margin-bottom:0">'+(s===t?'Today’s plan':'Plan for this day')+'</div>'+rows.join('')+'</section>';
 }
 
@@ -495,18 +499,16 @@ function buildCheckin(m){
   });
   const wa=wAvg(m),pw=wAvg(add(m,-7));
   L.push('3. Weight: '+(wa!=null?'avg '+r1(wa)+' kg'+(pw!=null?' (previous week '+r1(pw)+' kg)':''):'no entries'));
-  const wr=days.map(s=>(state.days[s]||{}).wrist).filter(v=>v!=null),as=days.map(s=>(state.days[s]||{}).asthma).filter(v=>v!=null);
-  L.push('4. Joints / wrist / asthma (0–10): wrist '+(wr.length?'max '+Math.max.apply(null,wr):'–')+', asthma '+(as.length?'max '+Math.max.apply(null,as):'–'));
   const sl=dayStat(m,'sleep'),en=dayStat(m,'energy');
-  L.push('5. Sleep '+(sl!=null?'avg '+r1(sl)+' h':'–')+' · energy '+(en!=null?'avg '+r1(en)+'/10':'–'));
+  L.push('4. Sleep '+(sl!=null?'avg '+r1(sl)+' h':'–')+' · energy '+(en!=null?'avg '+r1(en)+'/10':'–'));
   const ws=weekScore(m);
-  L.push('6. Weekly tracker: '+ws.sc+'/'+ws.mx);
+  L.push('5. Weekly tracker: '+ws.sc+'/'+ws.mx);
   const q=weekQuotas(m),lw=LW.find(w=>w.s===m);
   const cd=Object.keys(state.learn.days).filter(k=>state.learn.days[k]).length;
-  L.push('7. Learning: blocks '+q.lD+'/'+q.lN+' · course days '+cd+'/'+COURSE_TOTAL+(lw&&lw.proj?' · project “'+lw.proj.split(':')[0]+'” '+(state.learn.projects[lw.n]?'done':'not done'):''));
+  L.push('6. Learning: blocks '+q.lD+'/'+q.lN+' · course days '+cd+'/'+COURSE_TOTAL+(lw&&lw.proj?' · project “'+lw.proj.split(':')[0]+'” '+(state.learn.projects[lw.n]?'done':'not done'):''));
   const sp=(state.weeks[m]||{}).special;
   const nx=[];weekDays(add(m,7)).forEach(s=>{dayItems(s).forEach(x=>{if(x.kind==='routine')return;if(x.multi&&x.ref.date!==s&&s!==add(m,7))return;nx.push(DAY[dow(s)]+' '+(x.start!=null?mstr(x.start)+' ':'')+x.title);});});
-  L.push('8. Next week special: '+(((sp?sp+'; ':'')+nx.join('; '))||'nothing'));
+  L.push('7. Next week special: '+(((sp?sp+'; ':'')+nx.join('; '))||'nothing'));
   L.push('/silas');
   return L.join('\n');
 }
@@ -537,7 +539,7 @@ function strengthHtml(tm,s){
     }
     h+='</div>';
   });
-  h+='<section class="card"><div class="lab">Session note</div><input class="in" data-sn="1" placeholder="How did it feel? Wrist?" value="'+esc(sess?sess.note:'')+'"></section>';
+  h+='<section class="card"><div class="lab">Session note</div><input class="in" data-sn="1" placeholder="How did it feel?" value="'+esc(sess?sess.note:'')+'"></section>';
   return h;
 }
 function cardioHtml(s){
@@ -897,7 +899,7 @@ function dueList(s,all){
   const nm=all?1440:nowMin(),w=dow(s),p=planFor(s),c=dayChecks(s),d=state.days[s]||{},wk=wakeMin(s);
   const lin=learnInfo(s);
   const LBL={weight:'Weigh-in (fasted)',sleep:'Log last night’s sleep',up:'Up on time, phone off until breakfast',am:'Morning routine',tests:'Enter your test results',
-    tr:'Training: '+planName(p),le:lin?lin.title:'Learning block',wa:'Water',pr:'Protein ≥ 130 g today?',feel:'How was today? Energy, wrist, asthma',
+    tr:'Training: '+planName(p),le:lin?lin.title:'Learning block',wa:'Water',pr:'Protein ≥ 130 g today?',feel:'How was today? Rate your energy',
     sun:'Sunday reset and check-in',su:'Supplements morning + evening',ig:'Instagram ≤ 30 min today?',ev:'Evening discipline',li:'Lights out'};
   const tag=at=>'<span class="tag'+(nm-at>=90?' late':'')+'">since '+mstr(at)+'</span>';
   const chkRow=(id,at,label,extra)=>'<div class="nwr"><button class="chk" data-a="chk" data-id="'+id+'"><span class="bx"></span><span>'+esc(label)+'</span>'+tag(at)+'</button>'+(extra||'')+'</div>';
@@ -932,7 +934,7 @@ function dueList(s,all){
     else if(wn<exp)add_('wa',[600,720,960][exp-1],'<div class="lr nwr"><span class="lrt"><b>Water</b><small>'+wn+' of 3 bottles · aim for '+exp+' by now</small></span><span class="lrr"><button class="ib" data-a="waterAdj" data-d="-1" aria-label="Less">−</button><b class="wn">'+wn+'</b><button class="ib" data-a="waterAdj" data-d="1" aria-label="More">＋</button></span></div>');
     // evening
     if(!c.pr.on)add_('pr',1140,chkRow('pr',1140,'Protein ≥ 130 g today'));
-    if(d.energy==null)add_('feel',1200,'<div class="nwr nwb"><div><b>How was today?</b> <small class="muted">energy 1–10 · wrist and asthma 0–10</small></div><div class="f4 f3">'+[['energy','Energy'],['wrist','Wrist'],['asthma','Asthma']].map(f=>'<label>'+f[1]+'<input class="in" inputmode="numeric" data-bind="days|'+s+'|'+f[0]+'" data-t="n" value="'+esc(d[f[0]]!=null?d[f[0]]:'')+'"></label>').join('')+'</div></div>');
+    if(d.energy==null)add_('feel',1200,'<div class="lr nwr"><span class="lrt"><b>How was today?</b><small>Energy 1–10</small></span><input class="in w" inputmode="numeric" placeholder="1–10" data-bind="days|'+s+'|energy" data-t="n"></div>');
     if(w===6){const n=sunDone(s),N=sunList().length;if(n<N)add_('sun',960,go('data-a="goWeek"','Sunday reset and check-in',n+' of '+N+' done · check-in at 17:00'));}
     if(!c.su.on)add_('su',1260,chkRow('su',1260,'Supplements morning + evening'));
     if(!c.ig.on)add_('ig',1260,chkRow('ig',1260,'Instagram ≤ 30 min today'));
@@ -950,11 +952,33 @@ function dueList(s,all){
   out.next=nextUp(s);
   return out;
 }
+/* What is already done today, folded into one line so the open items keep the space.
+   Unfolded, ticks can be undone and values changed. */
+function doneHtml(s){
+  const c=dayChecks(s),d=state.days[s]||{},p=planFor(s),lab=[],rows=[];
+  const val=(title,path,v,unit,mode)=>{lab.push(title+' '+v+unit);rows.push('<div class="lr nwr"><span class="lrt"><b>'+title+'</b></span><input class="in w" inputmode="'+mode+'" data-bind="'+path+'" data-t="n" value="'+esc(v)+'"></div>');};
+  if(state.weights[s]!=null)val('Weigh-in','weights|'+s,state.weights[s],' kg','decimal');
+  if(d.sleep!=null)val('Sleep','days|'+s+'|sleep',d.sleep,' h','decimal');
+  CHK.forEach(x=>{
+    const k=c[x.id];
+    if(x.id==='wa'||!k.on||(k.auto&&!(x.id==='tr'&&p.k!=='r')))return; // rest days and free learning days are not "done"
+    lab.push(x.s);
+    rows.push('<div class="nwr"><button class="chk on'+(k.auto?' auto':'')+'" data-a="chk" data-id="'+x.id+'"><span class="bx">✓</span><span>'+esc(chkText(x.id,s))+'</span>'+(k.auto?'<span class="tag">auto</span>':'')+'</button></div>');
+  });
+  const wn=+d.water||0;
+  if(wn>0){lab.push('Water '+wn+'/3');rows.push('<div class="lr nwr"><span class="lrt"><b>Water</b><small>'+wn+' of 3 bottles</small></span><span class="lrr"><button class="ib" data-a="waterAdj" data-d="-1" aria-label="Less">−</button><b class="wn">'+wn+'</b><button class="ib" data-a="waterAdj" data-d="1" aria-label="More">＋</button></span></div>');}
+  if(d.energy!=null)val('Energy','days|'+s+'|energy',d.energy,'/10','numeric');
+  if(!lab.length)return '';
+  let h='<button class="lr nsub ndone" data-a="doneTog"><span class="lrt"><b>✓ '+lab.length+' done today</b><small>'+esc(lab.join(' · '))+'</small></span><span class="lrr">'+(ui.dn?'▴':'▾')+'</span></button>';
+  if(ui.dn)h+='<div class="nwl">'+rows.join('')+'</div>';
+  return h;
+}
 function nowHtml(s){
   const L=dueList(s),sc=cnt(dayChecks(s)),ws=weekScore(monday(s)),n=L.items.length+L.attn.length;
   let h='<section class="card now"><div class="nowh"><div><div class="lab" style="margin:0">'+(n?'To do now':'All caught up ✓')+'</div><div class="muted sm">'+(L.next?(L.next.start<=nowMin()?'Now: ':'Next: ')+mstr(L.next.start)+' · '+esc(L.next.title):'Nothing else scheduled today')+'</div></div><div class="nows"><b>'+sc+'/10</b><small>today'+(ws.mx?' · week '+ws.sc+'/'+ws.mx:'')+'</small></div></div>'+bar(sc*10);
   if(n)h+='<div class="nwl">'+L.attn.join('')+L.items.map(x=>x.html).join('')+'</div>';
   else h+='<p class="muted sm" style="margin:10px 0 0">Everything that is due is done. New items show up here when their time comes.</p>';
+  h+=doneHtml(s);
   if(L.prep)h+=prepHtml(s);
   if(L.yest.length){
     h+='<button class="lr nsub" data-a="yTog"><span class="lrt"><b>Yesterday: '+L.yest.length+' check'+(L.yest.length>1?'s':'')+' still open</b><small>Tick what you did last night</small></span><span class="lrr">'+(ui.yo?'▴':'▾')+'</span></button>';
@@ -1149,7 +1173,7 @@ function vMore(){
 /* ================= CALENDAR ================= */
 const tmin=s=>{const m=String(s||'').match(/^(\d{1,2}):(\d{2})$/);return m?(+m[1])*60+(+m[2]):null;};
 const mstr=n=>pad(Math.floor(n/60)%24)+':'+pad(n%60);
-const calBase=()=>ui.tab==='cal'?T():ui.date;
+const calBase=()=>ui.tab==='cal'?(isPhone()?calDay():T()):ui.date;
 function fixedEvents(){
   const L=[
    {id:'f-bud',title:'Budapest trip',date:'2026-11-01',until:'2026-11-06'},
@@ -1243,6 +1267,37 @@ function quickAdd(){
   return '<div class="qa"><input class="in" id="qa" data-qa="1" placeholder="e.g. Dentist Tue 17 Nov 14:30" autocomplete="off"><button class="btn" data-a="qaAdd">Add</button></div><div class="qpv" id="qapv">'+esc(qaPreview('',calBase()))+'</div><div class="btns" style="margin-top:6px"><button class="btn ghost" data-a="evnew">Detailed form</button></div>';
 }
 function updQa(t){const pv=$('#qapv');if(pv)pv.textContent=qaPreview(t.value,calBase());}
+/* Day view of the plan on the phone */
+function timelineHtml(s){
+  const items=dayItems(s);
+  const allday=items.filter(x=>x.start==null);
+  const timed=items.filter(x=>x.start!=null).sort((a,b)=>a.start-b.start||b.end-a.end);
+  let h='';
+  if(allday.length)h+='<div class="adr">'+allday.map(x=>x.kind==='routine'?'<span class="achip routine">'+esc(x.title)+'</span>':'<button class="achip '+x.kind+'" data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'">'+esc(x.title)+'</button>').join('')+'</div>';
+  if(!timed.length)return h+(allday.length?'':'<p class="muted">Nothing scheduled.</p>');
+  const H0=Math.floor(Math.min.apply(null,timed.map(x=>x.start))/60);
+  const H1=Math.max(H0+6,Math.ceil(Math.max.apply(null,timed.map(x=>x.end))/60));
+  // side by side only where blocks really overlap; short blocks count as 40 min (their minimum height)
+  const HP=38,VMIN=40;let cl=[],lanes=[],cEnd=-1;
+  const flush=()=>{cl.forEach(x=>{x.nl=lanes.length;});cl=[];lanes=[];};
+  timed.forEach(x=>{
+    const ve=Math.max(x.end,x.start+VMIN);
+    if(x.start>=cEnd)flush();
+    let i=0;while(lanes[i]!=null&&lanes[i]>x.start)i++;lanes[i]=ve;x.lane=i;cl.push(x);cEnd=Math.max(cEnd,ve);
+  });
+  flush();
+  let g='';
+  for(let hr=H0;hr<=H1;hr++)g+='<div class="hl" style="top:'+((hr-H0)*HP)+'px"><span>'+pad(hr%24)+'</span></div>';
+  timed.forEach(x=>{
+    const top=(x.start-H0*60)/60*HP,hh=Math.max(24,(x.end-x.start)/60*HP-2);
+    g+='<div class="blk '+x.kind+'"'+(x.kind!=='routine'?' data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'"':'')+' style="top:'+top.toFixed(0)+'px;height:'+hh.toFixed(0)+'px;left:calc(40px + (100% - 44px) * '+(x.lane/x.nl)+');width:calc((100% - 44px) / '+x.nl+' - 3px)"><b>'+mstr(x.start)+'</b> '+esc(x.title)+'</div>';
+  });
+  if(s===T()){const n=new Date(),mm=n.getHours()*60+n.getMinutes();if(mm>=H0*60&&mm<=H1*60)g+='<div class="nowl" style="top:'+((mm-H0*60)/60*HP).toFixed(0)+'px"></div>';}
+  return h+'<div class="dtl" style="height:'+((H1-H0)*HP)+'px">'+g+'</div>';
+}
+const isPhone=()=>window.innerWidth<900;
+/* the selected day of the shown week (today if it is in that week, else Monday) */
+function calDay(){const m=ui.cw,e=add(m,6),t=T();return(ui.cday&&ui.cday>=m&&ui.cday<=e)?ui.cday:(t>=m&&t<=e?t:m);}
 function vCal(){
   const m=ui.cw,days=weekDays(m),t=T(),all=days.map(s=>dayItems(s));
   const timedAll=[].concat.apply([],all).filter(x=>x.start!=null);
@@ -1270,8 +1325,12 @@ function vCal(){
     g+='<div class="wcol'+(s===t?' td':'')+'">'+c+'</div>';
   });
   g+='</div>';
-  h+='<section class="card" style="padding:8px"><div class="wsc"><div class="wgr">'+g+'</div></div></section>';
-  h+='<p class="muted sm" style="margin:0 4px 12px">Grey: routine. Blue: fixed dates. Outlined: your own. Tap a block to edit it, tap a day name to open that day. Long-term dates belong in your calendar app.</p>';
+  // phone: one day at a time (pick a day above, or swipe); desktop: the whole week as a grid
+  const cd=calDay();
+  h+='<section class="card dayonly"><div class="dchips">'+days.map(s=>'<button class="dchip'+(s===cd?' on':'')+(s===t?' td':'')+'" data-a="cday" data-date="'+s+'"><small>'+DAY[dow(s)]+'</small><b>'+pd(s).getDate()+'</b></button>').join('')+'</div>'+
+   '<div class="dhd"><div><div class="ttl">'+fmtD(cd)+'</div><div class="muted sm">'+esc(planFor(cd).t)+'</div></div><button class="ib t" data-a="gotoDay" data-date="'+cd+'">Open day</button></div>'+timelineHtml(cd)+'</section>';
+  h+='<section class="card wkonly" style="padding:8px"><div class="wsc"><div class="wgr">'+g+'</div></div></section>';
+  h+='<p class="muted sm" style="margin:0 4px 12px">Grey: routine. Blue: fixed dates. Outlined: your own. Tap a block to edit it. <span class="wkonly">Tap a day name to open that day. </span><span class="dayonly">Swipe left or right for the next day. </span>Long-term dates belong in your calendar app.</p>';
   h+='<section class="card"><div class="lab">Add appointment</div>'+quickAdd()+'</section>';
   return h;
 }
@@ -1382,9 +1441,11 @@ const ACT={
    save();render();toast(up?'Weights filled in · +'+inc+' kg':'Weights from last time filled in');
  },
  tab:t=>{ui.tab=t.dataset.tab;ui.armed=null;render(false);window.scrollTo(0,0);},
- cprev:()=>{ui.cw=add(ui.cw,-7);render();},
- cnext:()=>{ui.cw=add(ui.cw,7);render();},
- ctoday:()=>{ui.cw=monday(T());render();},
+ cprev:()=>{ui.cday=add(calDay(),-7);ui.cw=add(ui.cw,-7);render();},
+ cnext:()=>{ui.cday=add(calDay(),7);ui.cw=add(ui.cw,7);render();},
+ ctoday:()=>{ui.cw=monday(T());ui.cday=T();render();},
+ cday:t=>{ui.cday=t.dataset.date;render();},
+ cstep:n=>{const d=add(calDay(),n);ui.cday=d;ui.cw=monday(d);render();},
  schedTog:()=>{state.settings.schedOpen=!(state.settings.schedOpen!==false);save();render();},
  wAny:()=>{ui.wAny=ui.date;render();},
  goBody:()=>{ui.tab='prog';ui.gmode='body';render(false);window.scrollTo(0,0);},
@@ -1428,7 +1489,7 @@ const ACT={
    const r=parseQuick(v,calBase());
    state.events.push({id:'e'+Date.now(),date:r.date,until:'',start:r.start!=null?mstr(r.start):'',end:r.end!=null?mstr(r.end):'',title:r.title||'Appointment'});
    save();
-   if(ui.tab==='cal')ui.cw=monday(r.date);
+   if(ui.tab==='cal'){ui.cw=monday(r.date);ui.cday=r.date;}
    render();toast('Added to '+fmtD(r.date));
  },
  evnew:()=>{ui.modal={src:'new',id:null,title:'',date:calBase(),until:'',start:'',end:''};renderModal();},
@@ -1450,7 +1511,7 @@ const ACT={
    else if(m.src==='event'){const i=state.events.findIndex(x=>x.id===m.id);if(i>=0){ev.id=m.id;state.events[i]=ev;}else state.events.push(ev);}
    else state.events.push(ev);
    save();
-   if(ui.tab==='cal')ui.cw=monday(date);
+   if(ui.tab==='cal'){ui.cw=monday(date);ui.cday=date;}
    ui.modal=null;renderModal();render();toast('Saved');
  },
  mdel:()=>{
@@ -1475,6 +1536,7 @@ const ACT={
  },
  delSess:t=>{if(!arm('sess'+t.dataset.id))return;const z=state.sessions.find(x=>x.id===t.dataset.id);if(z&&z.gid)state.gdel[z.gid]=true;state.sessions=state.sessions.filter(x=>x.id!==t.dataset.id);save();render();},
  yTog:()=>{ui.yo=!ui.yo;render();},
+ doneTog:()=>{ui.dn=!ui.dn;render();},
  doUpdate:()=>{const f=ui.upd;ui.upd=null;if(f)f();},
  wgf:()=>{const p='weeks|'+ui.wm+'|gf';setPath(p,!getPath(p));save();render();},
  copy:t=>copyText(t.dataset.target),
@@ -1572,6 +1634,8 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const t=e.target;
   if(t.dataset&&t.dataset.chg&&CHG[t.dataset.chg])CHG[t.dataset.chg](t);
+  // a value typed into "To do now" or the day's plan: redraw once you leave the field, so the item moves to "done"
+  if(t.dataset&&t.dataset.bind&&t.closest&&t.closest('.now,.agenda'))setTimeout(safeRender,0);
   // reps of a set entered: start the rest timer
   if(t.classList&&t.classList.contains('sin')&&t.dataset.f==='reps'&&t.value.trim()&&EXALL[t.dataset.ex])restStart(restSec(EXALL[t.dataset.ex]));
 });
@@ -1591,6 +1655,7 @@ setInterval(()=>{
 window.addEventListener('pagehide',()=>{clearTimeout(qt);save();});
 document.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&e.target&&e.target.id==='qa'){e.preventDefault();ACT.qaAdd();return;}
+  if(e.key==='Enter'&&e.target&&e.target.tagName==='INPUT'&&e.target.closest('.now,.agenda')){e.target.blur();return;}
   if(e.key==='Escape'&&ui.modal){ACT.mclose();return;}
   // Desktop: arrow keys move between days (Today/Train) or weeks (Plan), like the swipe on the phone
   if((e.key!=='ArrowLeft'&&e.key!=='ArrowRight')||e.altKey||e.ctrlKey||e.metaKey||ui.modal)return;
@@ -1603,10 +1668,12 @@ document.addEventListener('keydown',e=>{
 let tx=null,ty=null;
 document.addEventListener('touchstart',e=>{const q=e.touches[0];tx=q.clientX;ty=q.clientY;},{passive:true});
 document.addEventListener('touchend',e=>{
-  if(tx==null||ui.tab!=='today'||ui.modal){tx=null;return;}
+  const calSwipe=ui.tab==='cal'&&ui.pmode==='sched'&&isPhone();
+  if(tx==null||(ui.tab!=='today'&&!calSwipe)||ui.modal){tx=null;return;}
   const q=e.changedTouches[0],dx=q.clientX-tx,dy=q.clientY-ty;tx=null;
   if(Math.abs(dx)<70||Math.abs(dy)>45)return;
-  if(e.target&&e.target.closest&&e.target.closest('input,textarea,select,.wsc'))return;
+  if(e.target&&e.target.closest&&e.target.closest('input,textarea,select,.wsc,.dchips'))return;
+  if(calSwipe){ACT.cstep(dx<0?1:-1);return;}
   ACT[dx<0?'dnext':'dprev']();
 },{passive:true});
 /* ================= bridge for sync.js and garmin.js ================= */
