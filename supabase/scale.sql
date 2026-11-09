@@ -47,7 +47,8 @@ begin
     raise exception 'Unknown token. Create a new one in the app (More → Setup → Scale).' using errcode = '28000';
   end if;
 
-  kg := round(replace(trim(p_kg), ',', '.')::numeric, 2);
+  -- take the first number in the text, so "72,4", "72.4 kg" or a whole Health sample all work
+  kg := round(replace(substring(coalesce(p_kg, '') from '\d+(?:[.,]\d+)?'), ',', '.')::numeric, 2);
   if kg is null or kg < 25 or kg > 300 then
     raise exception 'Weight % kg looks wrong.', p_kg;
   end if;
