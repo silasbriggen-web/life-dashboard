@@ -114,6 +114,28 @@ oder einfach die App neu öffnen.
 
 Lokal testen ohne Upload: Umgebungsvariable `GARMIN_TOKENS` setzen und `python garmin/sync.py --dry-run`.
 
+## 5. Waage (Zepp Life) über Apple Health
+
+Zepp Life hat keine offene Schnittstelle, schreibt aber jedes Gewicht in Apple Health. Ein iPhone-Kurzbefehl
+schickt das neueste Gewicht an Supabase (Funktion `add_weight`), die App übernimmt es wie die Garmin-Werte.
+Von Hand eingetippte Gewichte gewinnen immer, die Waage gewinnt gegen Garmin.
+
+1. **Supabase → SQL Editor → New query** → Inhalt von `supabase/scale.sql` → **Run**.
+2. **Zepp Life** → *Profil* → *Apple Health* (bzw. *Konten hinzufügen → Apple Health*) → einschalten und Gewicht erlauben.
+3. In der App **More → Setup → Scale (Zepp Life) → Create Shortcut key**.
+4. iPhone → App **Kurzbefehle** → **Automation** → **+** → **App** → *Zepp Life*, **Ist geschlossen**, **Sofort ausführen** → Weiter → **Neue leere Automation**:
+   1. Aktion **„Health-Messwerte suchen“** (*Find Health Samples*): Typ **Gewicht**, Sortieren nach **Startdatum**,
+      Reihenfolge **Neueste zuerst**, **Begrenzen** an, **1** Messwert.
+   2. Aktion **„Inhalte von URL abrufen“** (*Get Contents of URL*): URL = in der App **Copy** bei *1. URL* und einfügen.
+      Aufklappen: Methode **POST**, Anfragetext **JSON**, drei Felder hinzufügen:
+      - `p_token` (Text) = in der App **Copy** bei *2. Key*, einfügen
+      - `p_kg` (Text) = Variable **Health-Messwerte** antippen → **Wert**
+      - `p_when` (Text) = Variable **Health-Messwerte** antippen → **Startdatum**, Datumsformat **ISO 8601**
+5. Testen: Kurzbefehl einmal mit ▶ ausführen. Antwort `Saved 72.4 kg for 2026-…` heisst: es klappt.
+
+Ab dann: auf die Waage, Zepp Life kurz öffnen (synchronisiert die Messung), schliessen – das Gewicht steht
+nach dem nächsten Öffnen in der App. Neuer Key unter More → Setup macht den alten ungültig.
+
 ## 8. Push-Erinnerungen (auch bei geschlossener App)
 
 Die App berechnet laufend, was wann fällig wird (dieselbe Logik wie die Karte „To do now“), und legt

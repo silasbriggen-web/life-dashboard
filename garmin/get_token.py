@@ -14,6 +14,7 @@ import sys
 from getpass import getpass
 
 from garminconnect import Garmin
+from garminconnect.exceptions import GarminConnectAuthenticationError
 
 REPO = "silasbriggen-web/life-dashboard"
 
@@ -21,9 +22,17 @@ REPO = "silasbriggen-web/life-dashboard"
 def main() -> None:
     only_print = "--print" in sys.argv
     email = input("Garmin e-mail: ").strip()
-    password = getpass("Garmin password (hidden, nothing appears while typing): ")
-    api = Garmin(email, password, prompt_mfa=lambda: input("2-step code from Garmin: ").strip())
-    api.login()
+    for attempt in range(3):
+        password = getpass("Garmin password (hidden, nothing appears while typing): ")
+        api = Garmin(email, password, prompt_mfa=lambda: input("2-step code from Garmin: ").strip())
+        try:
+            api.login()
+            break
+        except GarminConnectAuthenticationError as e:
+            print(f"Login failed: {e}")
+            if attempt == 2:
+                sys.exit("Three failed attempts. Check your e-mail and password on connect.garmin.com, then run this again.")
+            print("Try the password again.\n")
     token = api.client.dumps()
     print("\nLogin OK.")
 

@@ -101,6 +101,7 @@ table{border-collapse:collapse;width:100%}
 .q{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
 .q:first-of-type{border-top:0}
 .q b.ok{color:var(--ok)}
+.q{align-items:center}.q .btn.sm{min-height:36px;padding:0 14px;font-size:13px;flex:none}
 .chart{width:100%;height:auto;display:block}
 .chart text{fill:var(--muted);font-size:10px}
 .bm{border-top:1px solid var(--line);padding:10px 0}

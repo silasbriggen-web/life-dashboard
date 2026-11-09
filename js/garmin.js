@@ -26,7 +26,8 @@ function kindFor(a,date){
 
 /* Copy Garmin rows into the app state. Returns true when something changed. */
 function merge(){
-  const st=LD.state,rows=cache.rows,dates=Object.keys(rows).sort();
+  const st=LD.state,rows=cache.rows,sc=cache.scale||{};
+  const dates=Object.keys(Object.assign({},rows,sc)).sort();
   if(!dates.length)return false;
   st.gsrc=st.gsrc||{};st.gdel=st.gdel||{};st.bench=st.bench||{};
   let ch=false;
@@ -40,8 +41,9 @@ function merge(){
   const weeks={};
   dates.forEach(d=>{
     const r=rows[d]||{};
-    // weight and sleep
-    setIf('weights|'+d,()=>st.weights[d],v=>{st.weights[d]=v;},num(r.weight_kg)!=null?LD.r1(+r.weight_kg):null);
+    // weight (the scale beats Garmin) and sleep
+    const wkg=num(sc[d])!=null?num(sc[d]):num(r.weight_kg);
+    setIf('weights|'+d,()=>st.weights[d],v=>{st.weights[d]=v;},wkg!=null?LD.r1(wkg):null);
     setIf('days|'+d+'|sleep',()=>(st.days[d]||{}).sleep,v=>{(st.days[d]=st.days[d]||{}).sleep=v;},num(r.sleep_h)!=null?LD.r1(+r.sleep_h):null);
     // VO2max: a new benchmark entry whenever Garmin's value changes
     const vo2=num(r.vo2);
@@ -88,7 +90,11 @@ async function refresh(){
     const rows={};(r.data||[]).forEach(x=>{rows[x.date]=x.data||{};});
     // keep older cached rows (outside the 45-day window) so the history card stays filled
     Object.keys(cache.rows).forEach(d=>{if(d<from)rows[d]=cache.rows[d];});
-    cache={rows:rows,at:new Date().toISOString(),err:null};saveCache();
+    // weigh-ins from the scale (Zepp Life → Apple Health → Shortcut); the table exists only after supabase/scale.sql
+    const scale={};
+    const q=await sb.from('scale_weights').select('date,kg').eq('user_id',user.id).gte('date',from);
+    if(!q.error)(q.data||[]).forEach(x=>{scale[x.date]=+x.kg;});
+    cache={rows:rows,scale:scale,scaleOk:!q.error,at:new Date().toISOString(),err:null};saveCache();
     if(!merge())LD.safeRender();
   }catch(e){cache.err=(e&&e.message)||String(e);saveCache();}
 }
@@ -122,6 +128,52 @@ function setupHtml(){
 }
 LD.ACT.garminRefresh=()=>{refresh().then(()=>{LD.toast(cache.err?'Garmin: '+cache.err:'Garmin data loaded');LD.render();});};
 
-window.LDGarmin={merge:merge,refresh:refresh,hasData:()=>!!latestDate(),todayHtml:todayHtml,setupHtml:setupHtml};
+/* ---------- scale (Zepp Life) ----------
+   The iPhone Shortcut posts the latest Apple Health weight to the database function add_weight
+   with a personal token. The token lives in your (private, synced) app state so you can copy it on any device;
+   the database only stores its SHA-256 hash. */
+function scaleUrl(){const C=window.LD_CONFIG||{};return (C.supabaseUrl||'').replace(/\/$/,'')+'/rest/v1/rpc/add_weight?apikey='+(C.supabaseAnonKey||'');}
+function scaleHtml(){
+  const sync=window.LDSync;
+  if(!sync||!sync.user())return '';
+  const sc=LD.state.scale||{},ds=Object.keys(cache.scale||{}).sort(),last=ds[ds.length-1];
+  let h='<section class="card"><div class="lab">Scale (Zepp Life)</div><p class="muted sm">Weigh-ins come in automatically: Zepp Life → Apple Health → an iPhone Shortcut. Setup: README, step 5. A weight you type yourself always wins.</p>';
+  if(last)h+='<p class="sm">Latest from the scale: <b>'+LD.esc(String(LD.r1(cache.scale[last])))+' kg</b> · '+LD.esc(LD.fmtD(last))+'</p>';
+  if(!sc.token)return h+'<div class="btns"><button class="btn" data-a="scaleNew">Create Shortcut key</button></div></section>';
+  return h+'<div class="q"><span>1. URL for the Shortcut</span><button class="btn ghost sm" data-a="scaleCopy" data-k="url">Copy</button></div>'
+    +'<div class="q"><span>2. Key (p_token)</span><button class="btn ghost sm" data-a="scaleCopy" data-k="token">Copy</button></div>'
+    +'<p class="muted sm">Created '+LD.esc(LD.fmtS(String(sc.at||'').slice(0,10)))+'. Treat the key like a password: with it, someone could add weights (nothing else).</p>'
+    +'<div class="btns"><button class="btn ghost" data-a="scaleTest">Send a test</button><button class="btn ghost" data-a="scaleNew">New key</button></div></section>';
+}
+async function sha256hex(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
+Object.assign(LD.ACT,{
+  scaleNew:async()=>{
+    const sync=window.LDSync,sb=sync&&sync.client(),user=sync&&sync.user();if(!sb||!user)return;
+    if(LD.state.scale&&LD.state.scale.token&&!confirm('Make a new key? The old one stops working, so you have to update the Shortcut.'))return;
+    const raw=new Uint8Array(24);crypto.getRandomValues(raw);
+    const token=btoa(String.fromCharCode.apply(null,raw)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    const r=await sb.from('scale_tokens').upsert({user_id:user.id,token_hash:await sha256hex(token)});
+    if(r.error){LD.toast(/scale_tokens|schema cache|does not exist/i.test(r.error.message)?'Run supabase/scale.sql in Supabase first (README step 5)':'Could not save: '+r.error.message);return;}
+    LD.state.scale={token:token,at:new Date().toISOString()};LD.save();LD.render();LD.toast('Key created');
+  },
+  scaleCopy:async t=>{
+    const v=t.dataset.k==='url'?scaleUrl():((LD.state.scale||{}).token||'');
+    try{await navigator.clipboard.writeText(v);LD.toast(t.dataset.k==='url'?'URL copied':'Key copied');}
+    catch(e){prompt('Copy this:',v);}
+  },
+  scaleTest:async()=>{
+    // posts the weight you entered for today (or yesterday's), exactly like the Shortcut does
+    const st=LD.state,t=LD.T(),kg=st.weights[t]!=null?st.weights[t]:st.weights[LD.add(t,-1)];
+    if(kg==null){LD.toast('Enter a weight for today first, then test');return;}
+    try{
+      const res=await fetch(scaleUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_token:(st.scale||{}).token,p_kg:String(kg),p_when:t})});
+      const body=await res.json().catch(()=>null);
+      LD.toast(res.ok?String(body):'Test failed: '+((body&&body.message)||res.status));
+      if(res.ok)refresh().then(()=>LD.render());
+    }catch(e){LD.toast('Test failed: '+(e.message||e));}
+  }
+});
+
+window.LDGarmin={merge:merge,refresh:refresh,hasData:()=>!!latestDate(),todayHtml:todayHtml,setupHtml:setupHtml,scaleHtml:scaleHtml};
 LD.render();
 })();
