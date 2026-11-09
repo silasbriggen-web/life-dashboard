@@ -180,6 +180,11 @@ h1{font-size:32px;font-weight:750;letter-spacing:-.025em;line-height:1.1}
 .lrr{color:var(--muted);font-size:18px;flex:none;display:flex;align-items:center;gap:8px}
 .lrr.ok{color:var(--ok);font-weight:700}
 .lr.sub{min-height:44px}
+.sqr{display:flex;align-items:center;gap:6px;border-top:1px solid var(--line)}
+.sq .lab+.sqr{border-top:0}
+.sqr .chk{border-top:0;flex:1;min-width:0;padding:10px 0}
+.sqr .chk.on .lrt b{color:var(--muted);text-decoration:line-through}
+.sqr .ib{flex:none;min-width:36px;height:36px;font-size:17px;padding:0;color:var(--muted)}
 .wsc{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .wgr{min-width:594px}
 .wrow{display:grid}

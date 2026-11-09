@@ -260,6 +260,83 @@ function streaks(){
     return{k:d.k,cur:run,best};
   });
 }
+/* ---------- side quests: 3 optional life-optimisation challenges per day ----------
+   The pick is fixed per date (same on every device), from 3 different categories, never yesterday's.
+   Flags: we = weekend only, wd = weekdays only. They don't count towards the day's points. */
+const SQ=[
+ ['cold','Cold shower','Last 2 minutes ice cold. Breathe slowly through it.','body'],
+ ['plunge','Ice bath','3 min in the lake or a tub of cold water. Never alone in open water.','body','we'],
+ ['sun','Morning light','10 min outside within 30 min of waking, no sunglasses.','body'],
+ ['walk','Walk after lunch','10–15 min walk right after eating.','body'],
+ ['mob','Mobility 10 min','Hips, thoracic spine, ankles. Before bed is fine.','body'],
+ ['nosug','No added sugar','No sweets, soft drinks or desserts today.','body'],
+ ['nocaf','No caffeine after 13:00','Better sleep tonight.','body'],
+ ['veg','Veggies at every meal','Something green with breakfast, lunch and dinner.','body'],
+ ['stairs','Stairs only','No lifts or escalators all day.','body'],
+ ['med','Meditate 15 min','Sit, eyes closed, follow the breath. An app is fine.','mind'],
+ ['journ','Journal one page','What happened, what you felt, what you learned.','mind'],
+ ['grat','3 things you are grateful for','Write them down, be specific.','mind'],
+ ['breath','Box breathing 5 min','4 s in, 4 hold, 4 out, 4 hold.','mind'],
+ ['read','Read 20 pages','A book, not a feed.','mind'],
+ ['nsdr','Nap or NSDR 20 min','Lie down after lunch: power nap or a yoga nidra track.','mind'],
+ ['nophone2','2 hours without phone','Flight mode or in another room. Pick the block now.','focus'],
+ ['wake','First hour phone-free','No phone for 60 min after waking.','focus'],
+ ['nosoc','No social media today','Instagram, TikTok, YouTube shorts: all off.','focus'],
+ ['deep','90 min deep work','One task, notifications off, timer on.','focus'],
+ ['screens','No screens 1 h before bed','Read, stretch or talk instead.','focus'],
+ ['grey','Phone in greyscale','All day. Makes scrolling boring.','focus'],
+ ['dread','Do the dreaded task','The thing you keep postponing. Start with 5 minutes.','focus'],
+ ['call','Call someone','A friend or family member. A real call, not texting.','social'],
+ ['old','Reach out to an old friend','Someone you haven\'t talked to in 6+ months.','social'],
+ ['compl','Give a real compliment','To a colleague, friend or stranger.','social'],
+ ['new','Talk to someone new','Start a conversation with someone you don\'t know.','social'],
+ ['favor','Unasked favour','Help someone without being asked.','social'],
+ ['plan','Plan a meetup','Fix a date with friends for this week or next.','social'],
+ ['eat','Eat with someone, no phones','A meal with people, phones away.','social'],
+ ['nohead','30 min outside, no headphones','Just walk and look around.','outside'],
+ ['sunset','Watch the sunset','Or the sunrise. 10 minutes, no photos.','outside'],
+ ['newpl','Go somewhere new','A street, park, café or trail you have never been to.','outside'],
+ ['hike','Hike 2+ hours','Get into the mountains or the woods.','outside','we'],
+ ['bike','Ride somewhere instead of driving','Bike or walk for one trip you would normally drive.','outside'],
+ ['decl','Declutter 15 min','One drawer, your desk or your downloads folder.','growth'],
+ ['cook','Cook a new recipe','Something you have never made.','growth'],
+ ['comf','Comfort zone challenge','Do one thing that feels a bit awkward or scary.','growth'],
+ ['lect','Learn something for 20 min','A lecture, a podcast episode or a tutorial outside your field.','growth'],
+ ['money','Money check 10 min','Look at spending, savings, one subscription to cancel.','growth','wd'],
+ ['tmrw','Plan tomorrow tonight','5 min: the 3 most important things for tomorrow.','growth'],
+ ['no','Say no to one thing','Protect your time once today.','growth'],
+ ['sab','Half-day phone sabbath','4 hours without your phone.','focus','we'],
+ ['cookf','Cook for friends','Invite people over and cook.','social','we']
+];
+const SQ_BY={};SQ.forEach(q=>SQ_BY[q[0]]=q);
+function sqRng(str){let h=2166136261;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return function(){h+=0x6D2B79F5;let t=h;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}
+function sqOk(q,s){const we=dow(s)>=5;/* dow: 0 = Monday … 6 = Sunday */return !(q[4]==='we'&&!we)&&!(q[4]==='wd'&&we);}
+function sqBase(s,skip){
+  const r=sqRng('sq'+s),all=SQ.slice();
+  for(let i=all.length-1;i>0;i--){const j=Math.floor(r()*(i+1));const x=all[i];all[i]=all[j];all[j]=x;}
+  const pool=all.filter(q=>sqOk(q,s)&&!(skip&&skip.indexOf(q[0])>=0)); // shuffle first, then filter: the order stays stable
+  const out=[],cats=[];
+  // weekends: one of the bigger weekend quests (ice bath, hike, …) is always in
+  const big=pool.find(q=>q[4]==='we');if(big&&dow(s)>=5){out.push(big[0]);cats.push(big[3]);}
+  pool.forEach(q=>{if(out.length<3&&cats.indexOf(q[3])<0){out.push(q[0]);cats.push(q[3]);}});
+  return out;
+}
+function sqPicks(s){
+  const base=sqBase(s,sqBase(add(s,-1))),sw=((state.days[s]||{}).sqs)||{};
+  return base.map((id,i)=>SQ_BY[sw[i]]?sw[i]:id);
+}
+function sqDone(s){return((state.days[s]||{}).sqd)||[];}
+function sqCount(from,to){let n=0;Object.keys(state.days).forEach(s=>{if(s>=from&&s<=to)n+=sqDone(s).filter(id=>SQ_BY[id]).length;});return n;}
+function sqHtml(s){
+  const ids=sqPicks(s),dn=sqDone(s),n=ids.filter(id=>dn.indexOf(id)>=0).length;
+  let h='<section class="card lrs sq"><div class="lab" style="padding-top:12px;margin-bottom:0">Side quests <span class="muted">· optional · '+(n===3?'<b style="color:var(--ok)">all 3 done ✓</b>':n+' of 3')+'</span></div>';
+  ids.forEach((id,i)=>{
+    const q=SQ_BY[id],on=dn.indexOf(id)>=0;
+    h+='<div class="sqr"><button class="chk '+(on?'on':'')+'" data-a="sqTog" data-id="'+id+'"><span class="bx">'+(on?'✓':'')+'</span><span class="lrt"><b>'+esc(q[1])+'</b><small>'+esc(q[2])+'</small></span></button>'
+      +(on?'':'<button class="ib" data-a="sqSwap" data-i="'+i+'" aria-label="Other quest" title="Other quest">↻</button>')+'</div>';
+  });
+  return h+'</section>';
+}
 function lastSession(tm,before){
   return state.sessions.filter(z=>z.type===tm&&z.date<before&&sessHasData(z)).sort((a,b)=>a.date<b.date?1:-1)[0];
 }
@@ -384,7 +461,7 @@ function vToday(){
     const on=!!(d.t3d&&d.t3d[i]);
     h+='<div class="t3"><button class="chk '+(on?'on':'')+'" data-a="t3" data-i="'+i+'" aria-label="Done"><span class="bx">'+(on?'✓':'')+'</span></button><input class="in" placeholder="Priority '+(i+1)+'" data-bind="days|'+s+'|top3|'+i+'" data-t="t" value="'+esc(d.top3&&d.top3[i]||'')+'"></div>';
   }
-  h+='</section>';
+  h+='</section>'+sqHtml(s);
   // Today the due items are in "To do now", so the full list starts folded; other days start open.
   const grpOpen=g=>ui.grp[g]!==undefined?ui.grp[g]:(s!==t);
   if(s===t)h+=infoH; // today: the plan first, the full check list (already in "To do now") folded below
@@ -502,7 +579,7 @@ function buildCheckin(m){
   const sl=dayStat(m,'sleep'),en=dayStat(m,'energy');
   L.push('4. Sleep '+(sl!=null?'avg '+r1(sl)+' h':'–')+' · energy '+(en!=null?'avg '+r1(en)+'/10':'–'));
   const ws=weekScore(m);
-  L.push('5. Weekly tracker: '+ws.sc+'/'+ws.mx);
+  L.push('5. Weekly tracker: '+ws.sc+'/'+ws.mx+' · side quests '+sqCount(m,e));
   const q=weekQuotas(m),lw=LW.find(w=>w.s===m);
   const cd=Object.keys(state.learn.days).filter(k=>state.learn.days[k]).length;
   L.push('6. Learning: blocks '+q.lD+'/'+q.lN+' · course days '+cd+'/'+COURSE_TOTAL+(lw&&lw.proj?' · project “'+lw.proj.split(':')[0]+'” '+(state.learn.projects[lw.n]?'done':'not done'):''));
@@ -728,7 +805,7 @@ function overHtml(){
   else h+='<p class="muted sm">Log sleep and energy for a few days and this shows how much sleep changes your energy.</p>';
   h+='</section>';
   // 6. streaks
-  h+='<section class="card"><div class="lab">Streaks</div><div class="streaks">'+streaks().map(x=>'<div class="st"><b>'+x.cur+'</b><span>'+x.k+'</span><small>best '+x.best+'</small></div>').join('')+'</div></section>';
+  h+='<section class="card"><div class="lab">Streaks</div><div class="streaks">'+streaks().map(x=>'<div class="st"><b>'+x.cur+'</b><span>'+x.k+'</span><small>best '+x.best+'</small></div>').join('')+'</div><p class="muted sm" style="margin:10px 0 0">Side quests: <b style="color:var(--fg)">'+sqCount(m0,add(m0,6))+'</b> this week · '+sqCount('2000-01-01',t)+' in total</p></section>';
   return h;
 }
 /* goals: measured by a benchmark, the weight average, the Python course or a number you type */
@@ -1529,6 +1606,15 @@ const ACT={
  chk:t=>{const s=ui.date,id=t.dataset.id;if(dayChecks(s)[id].auto)return;const p='days|'+s+'|c|'+id;setPath(p,!getPath(p));save();render();},
  wchk:t=>{const s=t.dataset.date,id=t.dataset.id;if(id==='wa'){const pw='days|'+s+'|water';setPath(pw,((+getPath(pw)||0)>=3)?0:3);save();render();return;}if(dayChecks(s)[id].auto)return;const p='days|'+s+'|c|'+id;setPath(p,!getPath(p));save();render();},
  t3:t=>{const p='days|'+ui.date+'|t3d|'+t.dataset.i;setPath(p,!getPath(p));save();render();},
+ sqTog:t=>{const s=ui.date,id=t.dataset.id,p='days|'+s+'|sqd',a=(getPath(p)||[]).slice(),i=a.indexOf(id);if(i>=0)a.splice(i,1);else{a.push(id);if(a.filter(x=>sqPicks(s).indexOf(x)>=0).length===3)toast('All 3 side quests done 🏆');}setPath(p,a);save();render();},
+ sqSwap:t=>{
+   const s=ui.date,i=+t.dataset.i,cur=sqPicks(s),y=sqBase(add(s,-1));
+   const others=cur.filter((x,j)=>j!==i).map(x=>SQ_BY[x][3]);
+   let pool=SQ.filter(q=>sqOk(q,s)&&cur.indexOf(q[0])<0&&y.indexOf(q[0])<0&&others.indexOf(q[3])<0);
+   if(!pool.length)pool=SQ.filter(q=>sqOk(q,s)&&cur.indexOf(q[0])<0);
+   const q=pool[Math.floor(Math.random()*pool.length)];if(!q)return;
+   setPath('days|'+s+'|sqs|'+i,q[0]);save();render();
+ },
  tmode:t=>{ui.tmode=t.dataset.m;ui.armed=null;render(false);window.scrollTo(0,0);},
  addCardio:()=>{
    const z={id:'s'+Date.now(),date:ui.date,type:'cardio',kind:$('#cd-k').value,min:pnum($('#cd-m').value),dist:pnum($('#cd-d').value),w:pnum($('#cd-w').value),hr:pnum($('#cd-h').value),feel:pnum($('#cd-f').value),note:$('#cd-n').value.trim()};
