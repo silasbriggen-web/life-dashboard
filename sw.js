@@ -1,6 +1,6 @@
 /* Service worker: makes the app open offline.
    Bump VERSION whenever you change any app file, so phones and desktops pick up the update. */
-const VERSION = 'ld-2026-11-09-3';
+const VERSION = 'ld-2026-11-09-4';
 const CORE = [
   './',
   'index.html',
