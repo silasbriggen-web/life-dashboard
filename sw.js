@@ -1,6 +1,6 @@
 /* Service worker: makes the app open offline.
    Bump VERSION whenever you change any app file, so phones and desktops pick up the update. */
-const VERSION = 'ld-2026-11-09-16';
+const VERSION = 'ld-2026-11-09-17';
 const CORE = [
   './',
   'index.html',
@@ -21,7 +21,8 @@ const CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
     const c = await caches.open(VERSION);
-    await c.addAll(CORE);
+    // cache: 'reload' skips the browser's HTTP cache (GitHub Pages sends max-age=600), so an update never stores old files
+    await c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })));
     try { await c.add(new Request(CDN, { mode: 'cors' })); } catch (err) { /* offline install: sync lib loads later */ }
   })());
 });
