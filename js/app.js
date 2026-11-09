@@ -167,6 +167,7 @@ function defaults(){return{
   {label:'New Year trip',date:'2026-12-26'},
   {label:'University starts (approx., edit)',date:'2027-09-20'}
  ],
+ todos:[],
  goals:[
   {id:'g1',t:'5 km under 22:00',k:'bench',b:'k5',target:1320,by:'2027-01-31',created:'2026-11-07'},
   {id:'g2',t:'5 km under 21:00',k:'bench',b:'k5',target:1260,by:'2027-06-30',created:'2026-11-07'},
@@ -450,24 +451,29 @@ function vToday(){
   if(s<START){const n=diff(s,START);sub=n===1?'Plan starts tomorrow':'Plan starts in '+n+' days';}
   else sub='Day '+(diff(START,s)+1)+' · week '+isoWeek(s)+(s<='2026-11-15'?' · test week':'');
   let h=head(fmtD(s),sub,dnav())+storageBanner();
-  // Today: one card with everything that is due right now. Other days: the score overview.
-  if(s===t)h+=nowHtml(s);
-  else h+='<section class="card ringc">'+ring(sc,10,88,sc+'/10',s<t?'that day':'planned')+'<div class="rtxt"><div class="big">'+(ws.mx?ws.sc+'/'+ws.mx:'–')+'</div><div class="muted">week points'+(ws.mx?' · goal '+ws.goal:'')+'</div>'+bar(ws.mx?ws.sc/ws.mx*100:0)+'</div></section>';
+  // Today: only what needs you now or soon. Automatic things (Garmin, auto checks) stay off this page.
+  if(s===t)return h+nowHtml(s)+comingHtml(s)+todoHtml(s)+sqHtml(s);
+  // Other days: score overview, that day's to-dos and plan, and the full tracker
+  h+='<section class="card ringc">'+ring(sc,10,88,sc+'/10',s<t?'that day':'planned')+'<div class="rtxt"><div class="big">'+(ws.mx?ws.sc+'/'+ws.mx:'–')+'</div><div class="muted">week points'+(ws.mx?' · goal '+ws.goal:'')+'</div>'+bar(ws.mx?ws.sc/ws.mx*100:0)+'</div></section>';
   const wDay=w===0||w===2||w===4;
-  // One compact card with the day's plan (replaces the old tiles, which only repeated the tab bar).
-  const infoH=agendaHtml(s)+(window.LDGarmin?window.LDGarmin.todayHtml(s):'');
-  h+='<section class="card"><div class="lab">Top 3 for this day</div>';
-  for(let i=0;i<3;i++){
-    const on=!!(d.t3d&&d.t3d[i]);
-    h+='<div class="t3"><button class="chk '+(on?'on':'')+'" data-a="t3" data-i="'+i+'" aria-label="Done"><span class="bx">'+(on?'✓':'')+'</span></button><input class="in" placeholder="Priority '+(i+1)+'" data-bind="days|'+s+'|top3|'+i+'" data-t="t" value="'+esc(d.top3&&d.top3[i]||'')+'"></div>';
-  }
-  h+='</section>'+sqHtml(s);
-  // Today the due items are in "To do now", so the full list starts folded; other days start open.
+  h+=todoHtml(s)+sqHtml(s)+agendaHtml(s);
+  h+='<section class="card lrs"><div class="lab" style="padding-top:12px;margin-bottom:0">Daily tracker</div>'+checksHtml(s)+'</section>';
+  const fsum=[d.sleep!=null?d.sleep+' h sleep':null,d.energy!=null?'energy '+d.energy+'/10':null].filter(Boolean).join(' · ')||'Sleep, energy, a note';
+  h+='<section class="card lrs"><button class="lr" data-a="feelTog"><span class="lrt"><b>Sleep, energy and note</b><small>'+esc(fsum)+'</small></span><span class="lrr">'+(ui.feel?'▴':'▾')+'</span></button>';
+  if(ui.feel)h+='<div style="padding:2px 0 14px"><div class="fgrid">'+
+   [['sleep','Sleep h','decimal'],['energy','Energy 1–10','numeric']].map(f=>'<label>'+f[1]+'<input class="in" inputmode="'+f[2]+'" data-bind="days|'+s+'|'+f[0]+'" data-t="n" value="'+esc(d[f[0]]!=null?d[f[0]]:'')+'"></label>').join('')+
+   '</div><input class="in full" placeholder="Note (optional)" data-bind="days|'+s+'|note" data-t="t" value="'+esc(d.note||'')+'">'+
+   ((!wDay&&state.weights[s]==null&&ui.wAny!==s)?'<div class="btns"><button class="ib t" data-a="wAny">Log weight anyway</button></div>':'')+'</div>';
+  return h+'</section>';
+}
+/* All checks of a day in their groups (folded groups on today, open on other days). */
+function checksHtml(s){
+  const c=dayChecks(s),d=state.days[s]||{},t=T();
   const grpOpen=g=>ui.grp[g]!==undefined?ui.grp[g]:(s!==t);
-  if(s===t)h+=infoH; // today: the plan first, the full check list (already in "To do now") folded below
-  h+='<section class="card lrs"><div class="lab" style="padding-top:12px;margin-bottom:0">'+(s===t?'All checks':'Daily tracker')+'</div>';
+  let h='';
   GR.forEach(g=>{
-    const ids=g[2].filter(id=>!(id==='le'&&c.le.auto)),done=ids.filter(id=>c[id].on).length,open=grpOpen(g[0]),all=done===ids.length;
+    const ids=g[2].filter(id=>!c[id].auto),done=ids.filter(id=>id==='wa'?(+d.water||0)>=3:c[id].on).length,open=grpOpen(g[0]),all=done===ids.length;
+    if(!ids.length)return;
     h+='<button class="lr sub" data-a="grpTog" data-g="'+g[0]+'"><span class="lrt"><b>'+g[1]+'</b><small>'+done+' of '+ids.length+' done</small></span><span class="lrr '+(all?'ok':'')+'">'+(all?'✓':(open?'▴':'▾'))+'</span></button>';
     if(!open)return;
     ids.forEach(id=>{
@@ -477,18 +483,87 @@ function vToday(){
         return;
       }
       const k=c[id];
-      h+='<button class="chk '+(k.on?'on':'')+(k.auto?' auto':'')+'" data-a="chk" data-id="'+id+'"><span class="bx">'+(k.on?'✓':'')+'</span><span>'+esc(chkText(id,s))+'</span>'+(k.auto?'<span class="tag">auto</span>':'')+'</button>';
+      h+='<button class="chk '+(k.on?'on':'')+'" data-a="chk" data-id="'+id+'"><span class="bx">'+(k.on?'✓':'')+'</span><span>'+esc(chkText(id,s))+'</span></button>';
     });
-    if(g[0]==='eve')h+=prepHtml(s);
+    if(g[0]==='eve'&&s!==t)h+=prepHtml(s);
   });
-  h+='</section>'+(s===t?'':infoH);
-  const fsum=[d.sleep!=null?d.sleep+' h sleep':null,d.energy!=null?'energy '+d.energy+'/10':null].filter(Boolean).join(' · ')||'Sleep, energy, a note';
-  h+='<section class="card lrs"><button class="lr" data-a="feelTog"><span class="lrt"><b>Sleep, energy and note</b><small>'+esc(fsum)+'</small></span><span class="lrr">'+(ui.feel?'▴':'▾')+'</span></button>';
-  if(ui.feel)h+='<div style="padding:2px 0 14px"><div class="fgrid">'+
-   [['sleep','Sleep h','decimal'],['energy','Energy 1–10','numeric']].map(f=>'<label>'+f[1]+'<input class="in" inputmode="'+f[2]+'" data-bind="days|'+s+'|'+f[0]+'" data-t="n" value="'+esc(d[f[0]]!=null?d[f[0]]:'')+'"></label>').join('')+
-   '</div><input class="in full" placeholder="Note (optional)" data-bind="days|'+s+'|note" data-t="t" value="'+esc(d.note||'')+'">'+
-   ((!wDay&&state.weights[s]==null&&ui.wAny!==s)?'<div class="btns"><button class="ib t" data-a="wAny">Log weight anyway</button></div>':'')+'</div>';
+  return h;
+}
+/* Today: what comes next (the next few blocks and appointments), and after 19:30 how tomorrow starts. */
+function comingHtml(s){
+  const nm=nowMin(),p=planFor(s),c=dayChecks(s),tmode=(p.k==='s'&&p.tm)?p.tm:(p.k==='c'?'cardio':'day');
+  const row=(x,day)=>{
+    const time='<span class="cu-t">'+(x.start!=null?mstr(x.start):'all day')+'</span>';
+    let attrs='',sub='';
+    if(x.kind!=='routine')attrs='data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'"';
+    else if(!day&&x.title===p.t&&(p.k==='s'||p.k==='c')){attrs='data-a="goTrain" data-m="'+tmode+'"';if(FUEL[p.id]&&!c.tr.on)sub=FUEL[p.id].split(/\.\s/)[0];}
+    else if(!day&&/^Python/.test(x.title)){const li=learnInfo(s);if(li){attrs='data-a="goLearn" data-n="'+li.lw.n+'"';sub=li.title.replace('Python · ','');}}
+    const inner=time+'<span class="lrt"><b>'+esc(x.title)+'</b>'+(sub?'<small>'+esc(sub)+'</small>':'')+'</span>'+(attrs?'<span class="lrr">›</span>':'');
+    return attrs?'<button class="lr cu '+x.kind+'" '+attrs+'>'+inner+'</button>':'<div class="lr cu '+x.kind+'">'+inner+'</div>';
+  };
+  const items=dayItems(s);
+  const allday=items.filter(x=>x.start==null&&x.kind!=='routine');
+  const next=items.filter(x=>x.start!=null&&x.start>nm).sort((a,b)=>a.start-b.start).slice(0,3);
+  let rows=allday.map(x=>row(x)).join('')+next.map(x=>row(x)).join('');
+  if(nm>=1170){
+    const n=add(s,1),tn=dayItems(n).filter(x=>x.start!=null).sort((a,b)=>a.start-b.start).slice(0,2);
+    const tad=dayItems(n).filter(x=>x.start==null&&x.kind!=='routine');
+    if(tn.length||tad.length)rows+='<div class="cu-day">Tomorrow · '+esc(planName(planFor(n)))+'</div>'+tad.map(x=>row(x,true)).join('')+tn.map(x=>row(x,true)).join('');
+  }
+  if(!rows)return '';
+  return '<section class="card lrs coming"><div class="lab" style="padding-top:12px;margin-bottom:0">Coming up</div>'+rows+'<button class="lr cu-more" data-a="goPlanDay" data-date="'+s+'"><span class="lrt"><small>Whole day in the plan</small></span><span class="lrr">›</span></button></section>';
+}
+/* ---------- to-dos ----------
+   state.todos: {id, t, due: 'YYYY-MM-DD' | null, done: 'YYYY-MM-DD' | null}. Today shows what is due by today
+   (and undated ones); other days show what is due that day. Type a date in the text ("Fr", "17.11.") to set it. */
+function todoDue(x,s){
+  if(x.done)return false;
+  return s===T()?(!x.due||x.due<=s):x.due===s;
+}
+function todoBadge(x){
+  const t=T();
+  if(!x.due)return '';
+  if(x.due<t)return '<span class="tdb late">'+esc(fmtS(x.due))+'</span>';
+  if(x.due===t)return '';
+  return '<span class="tdb">'+esc(x.due===add(t,1)?'tomorrow':fmtS(x.due))+'</span>';
+}
+function todoRow(x,full){
+  const i=state.todos.indexOf(x);
+  return '<div class="tdr'+(x.done?' done':'')+(full?' full':'')+'"><button class="chk'+(x.done?' on':'')+'" data-a="todoTog" data-id="'+esc(x.id)+'"><span class="bx">'+(x.done?'✓':'')+'</span><span class="tdt">'+esc(x.t)+'</span>'+(x.done||full?'':todoBadge(x))+'</button>'
+    +(full?'<button class="ib tdx" data-a="todoDel" data-id="'+esc(x.id)+'" aria-label="Delete">✕</button>'+(x.done?'':'<label class="tdl">Due <input class="in tdd" type="date" data-bind="todos|'+i+'|due" data-t="t" value="'+esc(x.due||'')+'" aria-label="Due date"></label>'):'')+'</div>';
+}
+function todoAddRow(base){
+  return '<div class="qa tda"><input class="in" id="td-new" data-base="'+base+'" placeholder="New to-do, e.g. Call the bank Fr" autocomplete="off"><button class="btn" data-a="todoAdd" data-base="'+base+'">Add</button></div>';
+}
+function todoHtml(s){
+  const t=T(),open=state.todos.filter(x=>todoDue(x,s)).sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1);
+  const doneToday=state.todos.filter(x=>x.done===s);
+  const later=s===t?state.todos.filter(x=>!x.done&&x.due&&x.due>t).length:0;
+  let h='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">To-dos'+(open.length?' <span class="muted">· '+open.length+'</span>':'')+'</div>';
+  h+=open.map(x=>todoRow(x)).join('');
+  if(!open.length)h+='<p class="muted sm" style="margin:6px 0 4px">'+(s===t?'Nothing due today.':'Nothing due this day.')+'</p>';
+  if(doneToday.length){
+    h+='<button class="lr sub ndone" data-a="tdnTog"><span class="lrt"><b>✓ '+doneToday.length+' done</b><small>'+esc(doneToday.map(x=>x.t).join(' · '))+'</small></span><span class="lrr">'+(ui.tdn?'▴':'▾')+'</span></button>';
+    if(ui.tdn)h+=doneToday.map(x=>todoRow(x)).join('');
+  }
+  h+=todoAddRow(s===t?'':s);
+  h+='<button class="lr cu-more" data-a="goTodos"><span class="lrt"><small>All to-dos'+(later?' · '+later+' planned later':'')+'</small></span><span class="lrr">›</span></button>';
   return h+'</section>';
+}
+/* Plan → To-dos: everything, grouped */
+function vTodos(){
+  const t=T(),open=state.todos.filter(x=>!x.done);
+  const grp=[['Overdue',x=>x.due&&x.due<t],['Today',x=>x.due===t],['No date',x=>!x.due],['Later',x=>x.due&&x.due>t]];
+  let h='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">Add a to-do</div>'+todoAddRow('')+'<p class="muted sm" style="margin:0 0 10px">A date in the text sets the due date: “Fr”, “morgen”, “17.11.”. Without one it shows on Today until it is done.</p></section>';
+  grp.forEach(g=>{
+    const L=open.filter(g[1]).sort((a,b)=>(a.due||'')<(b.due||'')?-1:1);
+    if(!L.length)return;
+    h+='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">'+g[0]+' <span class="muted">· '+L.length+'</span></div>'+L.map(x=>todoRow(x,true)).join('')+'</section>';
+  });
+  if(!open.length)h+='<p class="muted" style="margin:4px">No open to-dos.</p>';
+  const done=state.todos.filter(x=>x.done&&x.done>=add(t,-7)).sort((a,b)=>a.done<b.done?1:-1);
+  if(done.length)h+='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">Done in the last 7 days</div>'+done.map(x=>todoRow(x,true)).join('')+'</section>';
+  return h;
 }
 /* The day's plan as one list: training, Python, appointments, and whatever this day needs. */
 function agendaHtml(s){
@@ -762,6 +837,8 @@ function trainWeek(m){
 function overHtml(){
   const t=T(),m0=monday(t),q=(l,v,cl)=>'<div class="q"><span>'+l+'</span><b'+(cl?' class="'+cl+'"':'')+'>'+v+'</b></div>';
   let h='';
+  // Garmin: last night and today (filled in automatically, so it is here and not on Today)
+  if(window.LDGarmin)h+=window.LDGarmin.todayHtml(t)||window.LDGarmin.todayHtml(add(t,-1));
   // 1. points per week
   const wks=[];for(let i=7;i>=0;i--){const m=add(m0,-7*i),v=weekPct(m);if(v!=null)wks.push({l:'W'+isoWeek(m),v:v,cur:i===0});}
   h+='<section class="card"><div class="lab">Tracker points per week</div>';
@@ -933,7 +1010,7 @@ function moneyHtml(){
 }
 function setupHtml(){
   let h='';
-  h+='<section class="card"><div class="lab">Settings</div><div class="fgrid"><label>Theme<select class="sel" data-chg="theme"><option value="auto"'+(state.settings.theme==='auto'?' selected':'')+'>Automatic</option><option value="light"'+(state.settings.theme==='light'?' selected':'')+'>Light</option><option value="dark"'+(state.settings.theme==='dark'?' selected':'')+'>Dark</option></select></label><label>Football training ends<input class="in" type="date" data-bind="settings|footballEnd" data-t="t" value="'+esc(state.settings.footballEnd)+'"></label><label>Start weight (kg)<input class="in" inputmode="decimal" data-bind="settings|startWeight" data-t="n" value="'+esc(state.settings.startWeight!=null?state.settings.startWeight:'')+'"></label><label>Show work hours in the schedule<select class="sel" data-chg="workOn"><option value="0"'+(!(state.settings.work||{}).on?' selected':'')+'>No (not fixed yet)</option><option value="1"'+((state.settings.work||{}).on?' selected':'')+'>Yes</option></select></label><label>Work start<input class="in" type="time" data-bind="settings|work|start" data-t="t" value="'+esc((state.settings.work||{}).start||'08:00')+'"></label><label>Work end<input class="in" type="time" data-bind="settings|work|end" data-t="t" value="'+esc((state.settings.work||{}).end||'17:00')+'"></label></div></section>';
+  h+='<section class="card"><div class="lab">Settings</div><div class="fgrid"><label>Theme (this device)<select class="sel" data-chg="theme"><option value="auto"'+(devTheme()==='auto'?' selected':'')+'>Like the system</option><option value="light"'+(devTheme()==='light'?' selected':'')+'>Light</option><option value="dark"'+(devTheme()==='dark'?' selected':'')+'>Dark</option></select></label><label>Football training ends<input class="in" type="date" data-bind="settings|footballEnd" data-t="t" value="'+esc(state.settings.footballEnd)+'"></label><label>Start weight (kg)<input class="in" inputmode="decimal" data-bind="settings|startWeight" data-t="n" value="'+esc(state.settings.startWeight!=null?state.settings.startWeight:'')+'"></label><label>Show work hours in the schedule<select class="sel" data-chg="workOn"><option value="0"'+(!(state.settings.work||{}).on?' selected':'')+'>No (not fixed yet)</option><option value="1"'+((state.settings.work||{}).on?' selected':'')+'>Yes</option></select></label><label>Work start<input class="in" type="time" data-bind="settings|work|start" data-t="t" value="'+esc((state.settings.work||{}).start||'08:00')+'"></label><label>Work end<input class="in" type="time" data-bind="settings|work|end" data-t="t" value="'+esc((state.settings.work||{}).end||'17:00')+'"></label></div></section>';
   if(window.LDSync)h+=window.LDSync.html();
   if(window.LDPush)h+=window.LDPush.html();
   if(window.LDGarmin)h+=window.LDGarmin.setupHtml()+window.LDGarmin.scaleHtml();
@@ -954,7 +1031,7 @@ function prepItems(s){
   if(pn.k==='s'||pn.k==='c')items.push(['bag','Bag packed and clothes laid out: '+pn.t.split(' · ')[0]]);
   items.push(['water','Water bottle filled and ready']);
   const li=learnInfo(n);if(li)items.push(['lesson','Open tomorrow’s block: '+li.title.replace('Python · ','')]);
-  items.push(['top3','Tomorrow’s top 3 written down',!!(tn.top3&&tn.top3.some(x=>x&&x.trim()))]);
+  items.push(['top3','Tomorrow’s to-dos written down',state.todos.some(x=>x.due===n)||!!(tn.top3&&tn.top3.some(x=>x&&x.trim()))]);
   const first=routineFor(n).find(x=>x.start!=null);
   if(first)items.push(['alarm','Alarm set for '+mstr(first.start)]);
   return items.map(it=>{const auto=it[2]!==undefined;return{id:it[0],t:it[1],auto:auto,on:auto?it[2]:!!pr[it[0]]};});
@@ -984,14 +1061,17 @@ function dueList(s,all){
   const go=(attrs,title,sub)=>'<button class="lr nwr" '+attrs+'><span class="lrt"><b>'+esc(title)+'</b><small>'+esc(sub)+'</small></span><span class="lrr">›</span></button>';
   // things that need attention whatever the time
   state.supp.forEach(x=>{const l=suppLeft(x);if(l&&l.days<=21)out.attn.push(go('data-a="goStock"','Reorder '+x.n,'Runs out '+fmtS(l.end)+(l.days<=7?' · soon!':'')));});
+  const gl=window.LDGarmin&&window.LDGarmin.latest&&window.LDGarmin.latest();
+  if(gl&&gl<add(T(),-1))out.attn.push(go('data-a="goSetup"','Garmin data missing since '+fmtS(add(gl,1)),'Open Garmin Connect on your phone so the watch syncs'));
   if(hasData()&&!(window.LDSync&&window.LDSync.active())){const le=state.settings.lastExport,age=le?diff(le,T()):999;if(age>=14)out.attn.push(go('data-a="export"','Back up your data',le?'Last backup '+age+' days ago':'No backup yet'));}
   if(s>=START){
     // morning
     if(state.weights[s]==null&&(w===0||w===2||w===4)){
       const wl=Object.keys(state.weights).filter(k=>state.weights[k]!=null&&k<s).sort().pop();
-      add_('weight',wk,'<div class="lr nwr"><span class="lrt"><b>Weigh-in</b><small>Fasted, after the toilet'+(wl?' · last '+state.weights[wl]+' kg':'')+'</small></span><input class="in w" inputmode="decimal" placeholder="kg" data-bind="weights|'+s+'" data-t="n"></div>');
+      add_('weight',wk,'<div class="lr nwr"><span class="lrt"><b>Weigh-in</b><small>'+((state.scale&&state.scale.token)?'Step on the scale and open Zepp Life':'Fasted, after the toilet')+(wl?' · last '+state.weights[wl]+' kg':'')+'</small></span><input class="in w" inputmode="decimal" placeholder="kg" data-bind="weights|'+s+'" data-t="n"></div>');
     }
-    if(d.sleep==null)add_('sleep',wk,'<div class="lr nwr"><span class="lrt"><b>Sleep last night</b><small>Hours'+(window.LDGarmin?' · fills in by itself once Garmin syncs':'')+'</small></span><input class="in w" inputmode="decimal" placeholder="h" data-bind="days|'+s+'|sleep" data-t="n"></div>');
+    const gOn=!!(window.LDGarmin&&window.LDGarmin.hasData());
+    if(d.sleep==null)add_('sleep',gOn?660:wk,'<div class="lr nwr"><span class="lrt"><b>Sleep last night</b><small>Hours'+(gOn?' · Garmin has not sent it yet':'')+'</small></span><input class="in w" inputmode="decimal" placeholder="h" data-bind="days|'+s+'|sleep" data-t="n"></div>');
     if(!c.up.on)add_('up',wk,chkRow('up',wk,chkText('up',s)));
     const amAt=w<=4?460:wk+90;
     if(!c.am.on)add_('am',amAt,chkRow('am',amAt,'Morning routine complete'));
@@ -1061,6 +1141,9 @@ function nowHtml(s){
     h+='<button class="lr nsub" data-a="yTog"><span class="lrt"><b>Yesterday: '+L.yest.length+' check'+(L.yest.length>1?'s':'')+' still open</b><small>Tick what you did last night</small></span><span class="lrr">'+(ui.yo?'▴':'▾')+'</span></button>';
     if(ui.yo)h+='<div class="nwl">'+L.yest.join('')+'</div>';
   }
+  // every check of the day (to tick something before it is due) and the day's note
+  h+='<button class="lr nsub" data-a="allcTog"><span class="lrt"><b>All checks and note</b><small>Tick something early, or write a note</small></span><span class="lrr">'+(ui.allc?'▴':'▾')+'</span></button>';
+  if(ui.allc){const d=state.days[s]||{};h+='<div class="nwl allc">'+checksHtml(s)+'<input class="in full" placeholder="Note for today (optional)" data-bind="days|'+s+'|note" data-t="t" value="'+esc(d.note||'')+'" style="margin:8px 0 4px"></div>';}
   return h+'</section>';
 }
 /* Push reminder plan for today and the next two days. To keep it calm, items are bundled into a few
@@ -1237,8 +1320,8 @@ function vPlan(){
   ui.wm=ui.cw;
   const m=ui.cw,t=T(),md=ui.pmode;
   let h=head('Plan','Week '+isoWeek(m)+' · '+fmtS(m)+' – '+fmtS(add(m,6)),'<div class="nav"><button class="ib" data-a="cprev" aria-label="Previous week">‹</button>'+(m!==monday(t)?'<button class="ib t" data-a="ctoday">This week</button>':'')+'<button class="ib" data-a="cnext" aria-label="Next week">›</button></div>')+storageBanner();
-  h+='<div class="seg">'+[['sched','Schedule'],['track','Tracker'],['review','Review']].map(x=>'<button class="'+(md===x[0]?'on':'')+'" data-a="pmode" data-m="'+x[0]+'">'+x[1]+'</button>').join('')+'</div>';
-  return h+(md==='track'?vWeek():md==='review'?vReview():vCal());
+  h+='<div class="seg">'+[['sched','Schedule'],['todo','To-dos'],['track','Tracker'],['review','Review']].map(x=>'<button class="'+(md===x[0]?'on':'')+'" data-a="pmode" data-m="'+x[0]+'">'+x[1]+'</button>').join('')+'</div>';
+  return h+(md==='track'?vWeek():md==='review'?vReview():md==='todo'?vTodos():vCal());
 }
 function vMore(){
   const m=ui.mmode;
@@ -1344,7 +1427,31 @@ function quickAdd(){
   return '<div class="qa"><input class="in" id="qa" data-qa="1" placeholder="e.g. Dentist Tue 17 Nov 14:30" autocomplete="off"><button class="btn" data-a="qaAdd">Add</button></div><div class="qpv" id="qapv">'+esc(qaPreview('',calBase()))+'</div><div class="btns" style="margin-top:6px"><button class="btn ghost" data-a="evnew">Detailed form</button></div>';
 }
 function updQa(t){const pv=$('#qapv');if(pv)pv.textContent=qaPreview(t.value,calBase());}
-/* Day view of the plan on the phone */
+/* A day as an ordered list: time on the left, one row per block. Overlapping blocks simply follow
+   each other, long free stretches show as a gap, and on today a line marks "now". */
+function dayListHtml(s,compact){
+  const t=T(),nm=s===t?nowMin():-1,items=dayItems(s),pt=planFor(s).t;
+  const allday=items.filter(x=>x.start==null);
+  const timed=items.filter(x=>x.start!=null).sort((a,b)=>a.start-b.start||a.end-b.end);
+  let h='';
+  if(allday.length)h+='<div class="adr">'+allday.map(x=>x.kind==='routine'?'<span class="achip routine">'+esc(compact?x.short:x.title)+'</span>':'<button class="achip '+x.kind+'" data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'">'+esc(compact?x.short:x.title)+'</button>').join('')+'</div>';
+  if(!timed.length)return h+(allday.length?'':'<p class="muted sm" style="margin:6px 2px">Nothing scheduled.</p>');
+  let prevEnd=null,nowDone=s!==t;
+  const nowLine='<div class="ag-now"><span>'+mstr(Math.max(0,nm))+'</span></div>';
+  timed.forEach(x=>{
+    if(!nowDone&&x.start>nm){h+=nowLine;nowDone=true;}
+    if(!compact&&prevEnd!=null&&x.start-prevEnd>=120){const g=x.start-prevEnd;h+='<div class="ag-gap">'+Math.floor(g/60)+' h'+(g%60?' '+g%60+' min':'')+' free</div>';}
+    const past=s===t&&x.end<=nm,cur=s===t&&x.start<=nm&&x.end>nm;
+    const key=x.kind==='routine'&&(x.title===pt||/^Python block|^Football training|^Weekly check-in/.test(x.title)); // the blocks that matter
+    const cls='ag '+x.kind+(key?' key':'')+(past?' past':'')+(cur?' cur':'');
+    const inner='<span class="ag-t"><b>'+mstr(x.start)+'</b>'+(compact?'':'<small>'+mstr(x.end)+'</small>')+'</span><span class="ag-x">'+esc(compact?x.short:x.title)+'</span>';
+    h+=x.kind!=='routine'?'<button class="'+cls+'" data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'">'+inner+'</button>':'<div class="'+cls+'">'+inner+'</div>';
+    prevEnd=prevEnd==null?x.end:Math.max(prevEnd,x.end);
+  });
+  if(!nowDone&&nm>=0)h+=nowLine;
+  return h;
+}
+/* (old time-grid day view, no longer used) */
 function timelineHtml(s){
   const items=dayItems(s);
   const allday=items.filter(x=>x.start==null);
@@ -1377,37 +1484,13 @@ const isPhone=()=>window.innerWidth<900;
 function calDay(){const m=ui.cw,e=add(m,6),t=T();return(ui.cday&&ui.cday>=m&&ui.cday<=e)?ui.cday:(t>=m&&t<=e?t:m);}
 function vCal(){
   const m=ui.cw,days=weekDays(m),t=T(),all=days.map(s=>dayItems(s));
-  const timedAll=[].concat.apply([],all).filter(x=>x.start!=null);
   let h='';
-  const H0=timedAll.length?Math.floor(Math.min.apply(null,timedAll.map(x=>x.start))/60):6;
-  const H1=timedAll.length?Math.max(H0+6,Math.ceil(Math.max.apply(null,timedAll.map(x=>x.end))/60)):12;
-  const HP=26,cols='34px repeat(7,minmax(80px,1fr))';
-  let g='<div class="wrow" style="grid-template-columns:'+cols+'"><div class="wt0"></div>'+days.map(s=>'<button class="wh'+(s===t?' td':'')+'" data-a="gotoDay" data-date="'+s+'"><b>'+DAY[dow(s)]+' '+pd(s).getDate()+'</b><small>'+esc(planShort(planFor(s)))+'</small></button>').join('')+'</div>';
-  const ad=all.map(a=>a.filter(x=>x.start==null&&x.kind!=='routine'));
-  if(ad.some(a=>a.length))g+='<div class="wrow" style="grid-template-columns:'+cols+'"><div class="wt0"></div>'+ad.map(a=>'<div class="wad">'+a.map(x=>'<button class="wchip '+x.kind+'" data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'">'+esc(x.title)+'</button>').join('')+'</div>').join('')+'</div>';
-  g+='<div class="wrow wbody" style="grid-template-columns:'+cols+';grid-template-rows:'+((H1-H0)*HP)+'px"><div class="wt">';
-  for(let hr=H0;hr<H1;hr++)g+='<span style="top:'+((hr-H0)*HP-6)+'px">'+pad(hr%24)+'</span>';
-  g+='</div>';
-  days.forEach((s,i)=>{
-    const timed=all[i].filter(x=>x.start!=null).sort((a,b)=>a.start-b.start||b.end-a.end),lanes=[];
-    timed.forEach(x=>{let k=0;while(lanes[k]!=null&&lanes[k]>x.start)k++;lanes[k]=x.end;x.lane=k;});
-    const nl=Math.max(1,lanes.length);
-    let c='';
-    for(let hr=H0;hr<H1;hr++)c+='<div class="hl2" style="top:'+((hr-H0)*HP)+'px"></div>';
-    timed.forEach(x=>{
-      const top=(x.start-H0*60)/60*HP,hh=Math.max(15,(x.end-x.start)/60*HP-1);
-      c+='<div class="wb '+x.kind+'"'+(x.kind!=='routine'?' data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'"':'')+' style="top:'+top.toFixed(0)+'px;height:'+hh.toFixed(0)+'px;left:calc('+(x.lane/nl*100).toFixed(1)+'% + 1px);width:calc('+(100/nl).toFixed(1)+'% - 2px)"><b>'+mstr(x.start)+'</b> '+esc(x.short||x.title)+'</div>';
-    });
-    if(s===t){const n=new Date(),mm=n.getHours()*60+n.getMinutes();if(mm>=H0*60&&mm<=H1*60)c+='<div class="nowl" style="top:'+((mm-H0*60)/60*HP).toFixed(0)+'px"></div>';}
-    g+='<div class="wcol'+(s===t?' td':'')+'">'+c+'</div>';
-  });
-  g+='</div>';
   // phone: one day at a time (pick a day above, or swipe); desktop: the whole week as a grid
   const cd=calDay();
   h+='<section class="card dayonly"><div class="dchips">'+days.map(s=>'<button class="dchip'+(s===cd?' on':'')+(s===t?' td':'')+'" data-a="cday" data-date="'+s+'"><small>'+DAY[dow(s)]+'</small><b>'+pd(s).getDate()+'</b></button>').join('')+'</div>'+
-   '<div class="dhd"><div><div class="ttl">'+fmtD(cd)+'</div><div class="muted sm">'+esc(planFor(cd).t)+'</div></div><button class="ib t" data-a="gotoDay" data-date="'+cd+'">Open day</button></div>'+timelineHtml(cd)+'</section>';
-  h+='<section class="card wkonly" style="padding:8px"><div class="wsc"><div class="wgr">'+g+'</div></div></section>';
-  h+='<p class="muted sm" style="margin:0 4px 12px">Grey: routine. Blue: fixed dates. Outlined: your own. Tap a block to edit it. <span class="wkonly">Tap a day name to open that day. </span><span class="dayonly">Swipe left or right for the next day. </span>Long-term dates belong in your calendar app.</p>';
+   '<div class="dhd"><div><div class="ttl">'+fmtD(cd)+'</div><div class="muted sm">'+esc(planFor(cd).t)+'</div></div><button class="ib t" data-a="gotoDay" data-date="'+cd+'">Open day</button></div><div class="agl">'+dayListHtml(cd)+'</div></section>';
+  h+='<section class="card wkonly wkl">'+days.map(s=>'<div class="wkc'+(s===t?' td':'')+'"><button class="wh'+(s===t?' td':'')+'" data-a="gotoDay" data-date="'+s+'"><b>'+DAY[dow(s)]+' '+pd(s).getDate()+'</b><small>'+esc(planShort(planFor(s)))+'</small></button><div class="agl">'+dayListHtml(s,true)+'</div></div>').join('')+'</section>';
+  h+='<p class="muted sm" style="margin:0 4px 12px">Grey: routine. Blue: fixed dates. Purple: your own. Tap one of yours to edit it. <span class="wkonly">Tap a day name to open that day. </span><span class="dayonly">Swipe left or right for the next day. </span>Long-term dates belong in your calendar app.</p>';
   h+='<section class="card"><div class="lab">Add appointment</div>'+quickAdd()+'</section>';
   return h;
 }
@@ -1444,10 +1527,21 @@ function updBadge(){
     if(navigator.setAppBadge){(i.n?navigator.setAppBadge(i.n):navigator.clearAppBadge()).catch(()=>{});}
   }catch(e){}
 }
+/* Theme is chosen per device (not synced): phones default to light, even when iOS is in dark mode. */
+const THEME_KEY=KEY+'.theme';
+function devTheme(){
+  let v=null;try{v=localStorage.getItem(THEME_KEY);}catch(e){}
+  if(v==='auto'||v==='light'||v==='dark')return v;
+  const phone=/iPhone|iPod|Android.*Mobile/.test(navigator.userAgent)||window.matchMedia('(max-width: 899px)').matches;
+  return phone?'light':'auto';
+}
 function applyTheme(){
-  const th=state.settings.theme;
-  if(th==='light'||th==='dark')document.documentElement.setAttribute('data-theme',th);
-  else document.documentElement.removeAttribute('data-theme');
+  const th=devTheme(),root=document.documentElement;
+  if(th==='light'||th==='dark')root.setAttribute('data-theme',th);
+  else root.removeAttribute('data-theme');
+  // status bar / window colour follows the chosen theme
+  const dark=th==='dark'||(th==='auto'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m=>m.setAttribute('content',dark?'#0d0c1f':'#f4f5fc'));
 }
 function exportJson(){return JSON.stringify(state,null,2);}
 async function doExport(){
@@ -1552,6 +1646,7 @@ const ACT={
  pmode:t=>{ui.pmode=t.dataset.m;render(false);window.scrollTo(0,0);},
  mmode:t=>{ui.mmode=t.dataset.m;render(false);window.scrollTo(0,0);},
  goStock:()=>{ui.tab='more';ui.mmode='stock';render(false);window.scrollTo(0,0);},
+ goSetup:()=>{ui.tab='more';ui.mmode='setup';render(false);window.scrollTo(0,0);},
  sopen:t=>{ui.sopen=ui.sopen===t.dataset.id?null:t.dataset.id;render();},
  rmode:t=>{ui.rmode=t.dataset.m;ui.rv='';render();},
  rprev:()=>{const d=pd(ui.rmon);d.setMonth(d.getMonth()-1);ui.rmon=ds(d);ui.rv='';render();},
@@ -1623,6 +1718,24 @@ const ACT={
  delSess:t=>{if(!arm('sess'+t.dataset.id))return;const z=state.sessions.find(x=>x.id===t.dataset.id);if(z&&z.gid)state.gdel[z.gid]=true;state.sessions=state.sessions.filter(x=>x.id!==t.dataset.id);save();render();},
  yTog:()=>{ui.yo=!ui.yo;render();},
  doneTog:()=>{ui.dn=!ui.dn;render();},
+ allcTog:()=>{ui.allc=!ui.allc;render();},
+ tdnTog:()=>{ui.tdn=!ui.tdn;render();},
+ goTodos:()=>{ui.tab='cal';ui.pmode='todo';render(false);window.scrollTo(0,0);},
+ goPlanDay:t=>{const d=t.dataset.date;ui.tab='cal';ui.pmode='sched';ui.cw=monday(d);ui.cday=d;render(false);window.scrollTo(0,0);},
+ todoAdd:t=>{
+   const el=$('#td-new'),v=el?el.value.trim():'';if(!v){if(el)el.focus();return;}
+   const base=(t&&t.dataset&&t.dataset.base)||(el&&el.dataset.base)||'';
+   // a short weekday at the end ("… Fr") counts as a date for to-dos
+   const r=parseQuick(v.replace(/\s(mo|di|mi|do|fr|sa|so)\.?$/i,' $1.'),base||T());
+   let due=r.hadDate?r.date:(base||null);
+   // "5.11." typed shortly after the 5th means this year's (overdue), not next year's
+   if(due&&!/\d{4}/.test(v)){const ly=(+due.slice(0,4)-1)+due.slice(4);if(ly<T()&&ly>=add(T(),-60))due=ly;}
+   state.todos.push({id:'td'+Date.now().toString(36),t:r.title||v,due:due,done:null});
+   save();render();const n=$('#td-new');if(n)n.focus();
+   toast(due&&due!==T()?'Added for '+fmtS(due):'Added');
+ },
+ todoTog:t=>{const x=state.todos.find(z=>z.id===t.dataset.id);if(!x)return;x.done=x.done?null:T();save();render();},
+ todoDel:t=>{const i=state.todos.findIndex(z=>z.id===t.dataset.id);if(i<0)return;const x=state.todos[i];state.todos.splice(i,1);save();render();toast('Deleted “'+x.t+'”');},
  doUpdate:()=>{const f=ui.upd;ui.upd=null;if(f)f();},
  wgf:()=>{const p='weeks|'+ui.wm+'|gf';setPath(p,!getPath(p));save();render();},
  copy:t=>copyText(t.dataset.target),
@@ -1658,7 +1771,7 @@ const ACT={
 };
 const CHG={
  planSel:t=>{const s=ui.date;setPath('days|'+s+'|plan',t.value||null);save();render();},
- theme:t=>{state.settings.theme=t.value;save();applyTheme();},
+ theme:t=>{try{localStorage.setItem(THEME_KEY,t.value);}catch(e){}applyTheme();},
  workOn:t=>{state.settings.work.on=t.value==='1';save();},
  testin:t=>{
    const id=t.dataset.id,s=t.dataset.date,b=BMD[id],raw=t.value.trim();
@@ -1721,7 +1834,7 @@ document.addEventListener('change',e=>{
   const t=e.target;
   if(t.dataset&&t.dataset.chg&&CHG[t.dataset.chg])CHG[t.dataset.chg](t);
   // a value typed into "To do now" or the day's plan: redraw once you leave the field, so the item moves to "done"
-  if(t.dataset&&t.dataset.bind&&t.closest&&t.closest('.now,.agenda'))setTimeout(safeRender,0);
+  if(t.dataset&&t.dataset.bind&&t.closest&&t.closest('.now,.agenda,.todo'))setTimeout(safeRender,0);
   // reps of a set entered: start the rest timer
   if(t.classList&&t.classList.contains('sin')&&t.dataset.f==='reps'&&t.value.trim()&&EXALL[t.dataset.ex])restStart(restSec(EXALL[t.dataset.ex]));
 });
@@ -1741,7 +1854,8 @@ setInterval(()=>{
 window.addEventListener('pagehide',()=>{clearTimeout(qt);save();});
 document.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&e.target&&e.target.id==='qa'){e.preventDefault();ACT.qaAdd();return;}
-  if(e.key==='Enter'&&e.target&&e.target.tagName==='INPUT'&&e.target.closest('.now,.agenda')){e.target.blur();return;}
+  if(e.key==='Enter'&&e.target&&e.target.id==='td-new'){e.preventDefault();ACT.todoAdd(e.target);return;}
+  if(e.key==='Enter'&&e.target&&e.target.tagName==='INPUT'&&e.target.closest('.now,.agenda,.todo')){e.target.blur();return;}
   if(e.key==='Escape'&&ui.modal){ACT.mclose();return;}
   // Desktop: arrow keys move between days (Today/Train) or weeks (Plan), like the swipe on the phone
   if((e.key!=='ArrowLeft'&&e.key!=='ArrowRight')||e.altKey||e.ctrlKey||e.metaKey||ui.modal)return;

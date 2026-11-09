@@ -118,7 +118,7 @@ function todayHtml(s){
     box(num(r.vo2),'VO₂max')
   ].join('');
   if(!items&&!warn)return '';
-  return '<section class="card gmc"><div class="lab">Garmin</div><div class="gm">'+items+'</div>'+warn+'</section>';
+  return '<section class="card gmc"><div class="lab">Garmin · '+(s===t?'today':LD.esc(LD.fmtS(s)))+'</div><div class="gm">'+items+'</div>'+warn+'</section>';
 }
 function setupHtml(){
   const sync=window.LDSync;
@@ -174,6 +174,6 @@ Object.assign(LD.ACT,{
   }
 });
 
-window.LDGarmin={merge:merge,refresh:refresh,hasData:()=>!!latestDate(),todayHtml:todayHtml,setupHtml:setupHtml,scaleHtml:scaleHtml};
+window.LDGarmin={merge:merge,refresh:refresh,hasData:()=>!!latestDate(),latest:latestDate,todayHtml:todayHtml,setupHtml:setupHtml,scaleHtml:scaleHtml};
 LD.render();
 })();
