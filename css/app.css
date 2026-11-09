@@ -336,9 +336,14 @@ h1{font-size:32px;font-weight:750;letter-spacing:-.025em;line-height:1.1}
 .tdr.done .tdt{color:var(--muted);text-decoration:line-through}
 .tdb{flex:none;font-size:11.5px;font-weight:650;color:var(--muted);background:var(--soft);border-radius:8px;padding:3px 7px;margin-left:6px}
 .tdb.late{color:var(--bad);background:transparent;box-shadow:inset 0 0 0 1px var(--bad)}
+.tdb.soon{color:var(--warn);background:transparent;box-shadow:inset 0 0 0 1px var(--warn)}
+.ag.todo .ag-x{border-left-color:var(--warn);color:var(--fg);font-weight:600}
+.cu.todo .cu-t{color:var(--warn)}
 .tdr.full{flex-wrap:wrap}
-.tdl{flex:0 0 100%;display:flex;align-items:center;gap:8px;margin:-8px 0 10px 36px;font-size:12px;color:var(--muted)}
-.tdd{width:150px;min-height:34px;padding:4px 8px;font-size:13px}
+.tde{border:0;cursor:pointer;font:inherit;font-size:11.5px;font-weight:650;min-height:30px}
+.tdl{flex:0 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 10px 36px}
+.tdd{width:150px;min-height:36px;padding:4px 8px;font-size:13px}
+.tdd.tdtm{width:104px}
 .tdx{flex:none;min-width:34px;height:34px;font-size:14px;padding:0;color:var(--muted)}
 .tda{margin:8px 0 4px}
 .tda .btn{min-height:42px}

@@ -190,6 +190,8 @@ function migrate(){
   Object.keys(d).forEach(k=>{if(state[k]==null)state[k]=d[k];});
   ['settings','learn','money'].forEach(k=>{Object.keys(d[k]).forEach(kk=>{if(state[k][kk]==null)state[k][kk]=d[k][kk];});});
   freshStart();
+  // done to-dos older than 30 days are removed for good (they are hidden after one day anyway)
+  if(Array.isArray(state.todos))state.todos=state.todos.filter(x=>!x.done||x.done>=add(T(),-30));
 }
 /* One-time fresh start: everything entered before TRACK goes (checks, notes, sessions, tests, reviews, measurements),
    while values that Garmin or the scale filled in stay. Runs once per data set; the flag travels with the sync,
@@ -516,13 +518,14 @@ function comingHtml(s){
   const row=(x,day)=>{
     const time='<span class="cu-t">'+(x.start!=null?mstr(x.start):'all day')+'</span>';
     let attrs='',sub='';
-    if(x.kind!=='routine')attrs='data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'"';
+    if(x.kind==='todo')attrs='data-a="goTodos"';
+    else if(x.kind!=='routine')attrs='data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'"';
     else if(!day&&x.title===p.t&&(p.k==='s'||p.k==='c')){attrs='data-a="goTrain" data-m="'+tmode+'"';if(FUEL[p.id]&&!c.tr.on)sub=FUEL[p.id].split(/\.\s/)[0];}
     else if(!day&&/^Python/.test(x.title)){const li=learnInfo(s);if(li){attrs='data-a="goLearn" data-n="'+li.lw.n+'"';sub=li.title.replace('Python · ','');}}
     const inner=time+'<span class="lrt"><b>'+esc(x.title)+'</b>'+(sub?'<small>'+esc(sub)+'</small>':'')+'</span>'+(attrs?'<span class="lrr">›</span>':'');
     return attrs?'<button class="lr cu '+x.kind+'" '+attrs+'>'+inner+'</button>':'<div class="lr cu '+x.kind+'">'+inner+'</div>';
   };
-  const items=dayItems(s);
+  const items=dayItems(s).concat(todoTimed(s));
   const allday=items.filter(x=>x.start==null&&x.kind!=='routine');
   const next=items.filter(x=>x.start!=null&&x.start>nm).sort((a,b)=>a.start-b.start).slice(0,3);
   let rows=allday.map(x=>row(x)).join('')+next.map(x=>row(x)).join('');
@@ -535,56 +538,120 @@ function comingHtml(s){
   return '<section class="card lrs coming"><div class="lab" style="padding-top:12px;margin-bottom:0">Coming up</div>'+rows+'<button class="lr cu-more" data-a="goPlanDay" data-date="'+s+'"><span class="lrt"><small>Whole day in the plan</small></span><span class="lrr">›</span></button></section>';
 }
 /* ---------- to-dos ----------
-   state.todos: {id, t, due: 'YYYY-MM-DD' | null, done: 'YYYY-MM-DD' | null}. Today shows what is due by today
-   (and undated ones); other days show what is due that day. Type a date in the text ("Fr", "17.11.") to set it. */
-function todoDue(x,s){
-  if(x.done)return false;
-  return s===T()?(!x.due||x.due<=s):x.due===s;
-}
-function todoBadge(x){
+   state.todos: {id, t, due: 'YYYY-MM-DD' | null, time: 'HH:MM' | null, on: true = fixed date (an event, e.g. lunch at grandma's),
+   otherwise a deadline ("by …"), month: true = only the month is known, done: 'YYYY-MM-DD' | null}.
+   Sorted by urgency. Today shows what is overdue or due today, plus deadlines in the next 3 days.
+   Done items stay visible for the rest of the day and the next, then they disappear. */
+const MONTHS_DE=['januar','februar','märz','april','mai','juni','juli','august','september','oktober','november','dezember'];
+const MONTHS_EN=['january','february','march','april','may','june','july','august','september','october','november','december'];
+const todoOpen=()=>state.todos.filter(x=>!x.done);
+const todoSort=(a,b)=>{const da=a.due||'9999',db=b.due||'9999';if(da!==db)return da<db?-1:1;const ta=a.time||'99',tb=b.time||'99';return ta<tb?-1:ta>tb?1:0;};
+const todoVisibleDone=x=>x.done&&x.done>=add(T(),-1);
+function todoWhen(x){
   const t=T();
-  if(!x.due)return '';
-  if(x.due<t)return '<span class="tdb late">'+esc(fmtS(x.due))+'</span>';
-  if(x.due===t)return '';
-  return '<span class="tdb">'+esc(x.due===add(t,1)?'tomorrow':fmtS(x.due))+'</span>';
+  if(!x.due)return {txt:'',cls:''};
+  const n=diff(t,x.due);
+  let rel=n<0?(n===-1?'yesterday':(-n)+' days ago'):n===0?'today':n===1?'tomorrow':n<7?DAY[dow(x.due)]+' '+pd(x.due).getDate():fmtS(x.due);
+  if(x.month&&n>=0)rel=MON[pd(x.due).getMonth()]+(pd(x.due).getFullYear()!==pd(t).getFullYear()?' '+pd(x.due).getFullYear():'');
+  else if(n>=7&&pd(x.due).getFullYear()!==pd(t).getFullYear())rel+=' '+pd(x.due).getFullYear();
+  const txt=(n>0&&!x.on&&!x.month?'by ':'')+rel+(x.time?' · '+x.time:'');
+  return {txt:txt,cls:n<0?'late':n<=2?'soon':''};
 }
+/* full = the list in Plan → To-dos: tap the date (or ✎) to change the date or delete */
 function todoRow(x,full){
-  const i=state.todos.indexOf(x);
-  return '<div class="tdr'+(x.done?' done':'')+(full?' full':'')+'"><button class="chk'+(x.done?' on':'')+'" data-a="todoTog" data-id="'+esc(x.id)+'"><span class="bx">'+(x.done?'✓':'')+'</span><span class="tdt">'+esc(x.t)+'</span>'+(x.done||full?'':todoBadge(x))+'</button>'
-    +(full?'<button class="ib tdx" data-a="todoDel" data-id="'+esc(x.id)+'" aria-label="Delete">✕</button>'+(x.done?'':'<label class="tdl">Due <input class="in tdd" type="date" data-bind="todos|'+i+'|due" data-t="t" value="'+esc(x.due||'')+'" aria-label="Due date"></label>'):'')+'</div>';
+  const i=state.todos.indexOf(x),w=todoWhen(x),ed=full&&ui.tdEdit===x.id;
+  const chk='<button class="chk'+(x.done?' on':'')+'" data-a="todoTog" data-id="'+esc(x.id)+'"><span class="bx">'+(x.done?'✓':'')+'</span><span class="tdt">'+esc(x.t)+'</span>'+(!full&&!x.done&&w.txt?'<span class="tdb '+w.cls+'">'+esc(w.txt)+'</span>':'')+'</button>';
+  if(!full)return '<div class="tdr'+(x.done?' done':'')+'">'+chk+'</div>';
+  const edBtn='<button class="tdb tde '+w.cls+'" data-a="tdEdit" data-id="'+esc(x.id)+'" aria-label="Change date">'+esc(x.done?'undo':(w.txt||'✎'))+'</button>';
+  let h='<div class="tdr full'+(x.done?' done':'')+(ed?' ed':'')+'">'+chk+(x.done?'':edBtn);
+  if(ed)h+='<div class="tdl"><input class="in tdd" type="date" data-bind="todos|'+i+'|due" data-t="t" value="'+esc(x.due||'')+'" aria-label="Date"><input class="in tdd tdtm" type="time" data-bind="todos|'+i+'|time" data-t="t" value="'+esc(x.time||'')+'" aria-label="Time"><button class="ib t warn" data-a="todoDel" data-id="'+esc(x.id)+'">Delete</button></div>';
+  return h+'</div>';
 }
 function todoAddRow(base){
   return '<div class="qa tda"><input class="in" id="td-new" data-base="'+base+'" placeholder="New to-do, e.g. Call the bank Fr" autocomplete="off"><button class="btn" data-a="todoAdd" data-base="'+base+'">Add</button></div>';
 }
 function todoHtml(s){
-  const t=T(),open=state.todos.filter(x=>todoDue(x,s)).sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1);
-  const doneToday=state.todos.filter(x=>x.done===s);
-  const later=s===t?state.todos.filter(x=>!x.done&&x.due&&x.due>t).length:0;
+  const t=T(),today=s===t;
+  const open=todoOpen().filter(x=>today?(x.due&&x.due<=s):x.due===s).sort(todoSort);
+  const soon=today?todoOpen().filter(x=>x.due&&x.due>t&&x.due<=add(t,3)).sort(todoSort):[];
+  const doneHere=state.todos.filter(x=>x.done===s);
+  const rest=today?todoOpen().length-open.length-soon.length:0;
   let h='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">To-dos'+(open.length?' <span class="muted">· '+open.length+'</span>':'')+'</div>';
   h+=open.map(x=>todoRow(x)).join('');
-  if(!open.length)h+='<p class="muted sm" style="margin:6px 0 4px">'+(s===t?'Nothing due today.':'Nothing due this day.')+'</p>';
-  if(doneToday.length){
-    h+='<button class="lr sub ndone" data-a="tdnTog"><span class="lrt"><b>✓ '+doneToday.length+' done</b><small>'+esc(doneToday.map(x=>x.t).join(' · '))+'</small></span><span class="lrr">'+(ui.tdn?'▴':'▾')+'</span></button>';
-    if(ui.tdn)h+=doneToday.map(x=>todoRow(x)).join('');
+  if(!open.length)h+='<p class="muted sm" style="margin:6px 0 4px">'+(today?'Nothing due today.':'Nothing due this day.')+'</p>';
+  if(soon.length)h+='<div class="cu-day">Next 3 days</div>'+soon.map(x=>todoRow(x)).join('');
+  if(doneHere.length){
+    h+='<button class="lr sub ndone" data-a="tdnTog"><span class="lrt"><b>✓ '+doneHere.length+' done</b><small>'+esc(doneHere.map(x=>x.t).join(' · '))+'</small></span><span class="lrr">'+(ui.tdn?'▴':'▾')+'</span></button>';
+    if(ui.tdn)h+=doneHere.map(x=>todoRow(x)).join('');
   }
-  h+=todoAddRow(s===t?'':s);
-  h+='<button class="lr cu-more" data-a="goTodos"><span class="lrt"><small>All to-dos'+(later?' · '+later+' planned later':'')+'</small></span><span class="lrr">›</span></button>';
+  h+=todoAddRow(s);
+  h+='<button class="lr cu-more" data-a="goTodos"><span class="lrt"><small>All to-dos'+(rest>0?' · '+rest+' more':'')+'</small></span><span class="lrr">›</span></button>';
   return h+'</section>';
 }
-/* Plan → To-dos: everything, grouped */
+/* Plan → To-dos: everything, by urgency */
 function vTodos(){
-  const t=T(),open=state.todos.filter(x=>!x.done);
-  const grp=[['Overdue',x=>x.due&&x.due<t],['Today',x=>x.due===t],['No date',x=>!x.due],['Later',x=>x.due&&x.due>t]];
-  let h='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">Add a to-do</div>'+todoAddRow('')+'<p class="muted sm" style="margin:0 0 10px">A date in the text sets the due date: “Fr”, “morgen”, “17.11.”. Without one it shows on Today until it is done.</p></section>';
+  const t=T(),open=todoOpen(),d=x=>x.due?diff(t,x.due):null;
+  const grp=[
+    ['Overdue',x=>x.due&&x.due<t],
+    ['Today',x=>x.due===t],
+    ['Tomorrow',x=>d(x)===1],
+    ['This week',x=>d(x)>=2&&d(x)<=7],
+    ['Next 4 weeks',x=>d(x)>=8&&d(x)<=31],
+    ['Later',x=>d(x)>31],
+    ['Someday',x=>!x.due]
+  ];
+  let h='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">Add a to-do</div>'+todoAddRow('')
+    +'<p class="muted sm" style="margin:0 0 6px">A date in the text sets it: “Fr”, “morgen”, “17.11.”. Without a date it goes to Someday.</p>'
+    +'<button class="lr cu-more" data-a="tdBulkTog"><span class="lrt"><small>Paste a whole list</small></span><span class="lrr">'+(ui.tdBulk?'▴':'▾')+'</span></button>';
+  if(ui.tdBulk)h+='<textarea id="td-bulk" class="in full" placeholder="One to-do per line, e.g.&#10;- [ ] Buy a microSD card — bis 12.11.&#10;- [ ] Lunch at grandma’s — 11.11.&#10;- [ ] Interview — 10.11., 13:30&#10;- [ ] Plan the app — keine Deadline"></textarea><div class="btns" style="margin-bottom:10px"><button class="btn" data-a="todoBulk">Add all</button><span class="muted sm">Dates, times, “bis”, months and “keine Deadline” are recognised. Duplicates are skipped.</span></div>';
+  h+='</section>';
   grp.forEach(g=>{
-    const L=open.filter(g[1]).sort((a,b)=>(a.due||'')<(b.due||'')?-1:1);
+    const L=open.filter(g[1]).sort(todoSort);
     if(!L.length)return;
     h+='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">'+g[0]+' <span class="muted">· '+L.length+'</span></div>'+L.map(x=>todoRow(x,true)).join('')+'</section>';
   });
   if(!open.length)h+='<p class="muted" style="margin:4px">No open to-dos.</p>';
-  const done=state.todos.filter(x=>x.done&&x.done>=add(t,-7)).sort((a,b)=>a.done<b.done?1:-1);
-  if(done.length)h+='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">Done in the last 7 days</div>'+done.map(x=>todoRow(x,true)).join('')+'</section>';
+  const done=state.todos.filter(todoVisibleDone).sort((a,b)=>a.done<b.done?1:-1);
+  if(done.length)h+='<section class="card lrs todo"><div class="lab" style="padding-top:12px;margin-bottom:0">Done <span class="muted">· disappears after a day</span></div>'+done.map(x=>todoRow(x,true)).join('')+'</section>';
   return h;
+}
+/* One line of a pasted list → a to-do. Understands "— bis 12.11.", "— 10.11., 13:30", "— Dezember", "— 31.3.2027",
+   "— keine Deadline", leading "- [ ]" / "[x]" and **bold** markers. */
+function parseTodoLine(line){
+  let s=String(line).replace(/\*\*/g,'').trim();
+  if(!s||/^#/.test(s))return null;
+  const done=/^[-*•]?\s*\[[xX]\]/.test(s);
+  s=s.replace(/^[-*•]\s*/,'').replace(/^\[[ xX]?\]\s*/,'').replace(/^[-*•]\s*/,'').trim();
+  if(!s)return null;
+  let title=s,when='';
+  for(const sep of [' — ',' – ',' - ']){const i=s.lastIndexOf(sep);if(i>0){title=s.slice(0,i).trim();when=s.slice(i+sep.length).trim();break;}}
+  const t=T(),y0=pd(t).getFullYear();
+  const out={t:title,due:null,time:null,on:false,month:false,done:done};
+  const w=when.toLowerCase().replace(/[()]/g,'').trim();
+  const pick=(y,m,d,hasYear)=>{const x=new Date(y,m,d);if(x.getMonth()!==m)return null;let r=ds(x);if(!hasYear&&r<add(t,-60))r=ds(new Date(y+1,m,d));return r;};
+  if(!w){
+    // no separator: let the quick parser find a date inside the text
+    const q=parseQuick(s.replace(/\s(mo|di|mi|do|fr|sa|so)\.?$/i,' $1.'),t);
+    if(q.hadDate){out.t=q.title||s;out.due=q.date;out.time=q.start!=null?mstr(q.start):null;}
+    return out;
+  }
+  if(/keine\s+deadline|no\s+deadline|irgendwann|someday/.test(w))return out;
+  const by=/^(bis|by|until|spätestens)\b/.test(w);
+  const rest=w.replace(/^(bis|by|until|spätestens)\s*/,'');
+  const tm=rest.match(/(\d{1,2})[:](\d{2})\s*(uhr)?\s*$/);
+  if(tm&&+tm[1]<24)out.time=String(+tm[1]).padStart(2,'0')+':'+tm[2];
+  const dm=rest.match(/(\d{1,2})\.(\d{1,2})\.?(\d{4})?/);
+  if(dm){out.due=pick(dm[3]?+dm[3]:y0,+dm[2]-1,+dm[1],!!dm[3]);}
+  else{
+    const mi=MONTHS_DE.concat(MONTHS_EN).findIndex(m=>rest.indexOf(m)===0||rest.indexOf(m.slice(0,3))===0);
+    if(mi>=0){
+      const m=mi%12,ym=rest.match(/(\d{4})/),yy=ym?+ym[1]:(new Date(y0,m+1,0)<pd(t)?y0+1:y0);
+      out.due=ds(new Date(yy,m+1,0));out.month=true;
+    }else{const q=parseQuick(when,t);if(q.hadDate){out.due=q.date;if(q.start!=null)out.time=mstr(q.start);}}
+  }
+  if(out.due&&!by&&!out.month)out.on=true; // a plain date (no "bis") is a fixed day
+  if(out.time&&!out.due)out.time=null;
+  return out;
 }
 /* The day's plan as one list: training, Python, appointments, and whatever this day needs. */
 function agendaHtml(s){
@@ -1397,6 +1464,8 @@ function routineFor(s){
   return out;
 }
 const inRange=(e,s)=>s>=e.date&&s<=(e.until||e.date);
+/* open to-dos with a time on day s, shaped like schedule items (for Coming up and the day list) */
+const todoTimed=s=>state.todos.filter(x=>!x.done&&x.due===s&&x.time&&tmin(x.time)!=null).map(x=>({id:x.id,title:x.t,short:x.t,kind:'todo',start:tmin(x.time),end:tmin(x.time)+30}));
 function mkItem(e,kind){const a=e.until?null:tmin(e.start),b=tmin(e.end);return{id:e.id,title:e.title,kind:kind,start:a,end:a!=null?((b!=null&&b>a)?b:a+60):null,multi:!!e.until,short:e.title,ref:e};}
 function dayItems(s){
   const out=routineFor(s).slice();
@@ -1451,7 +1520,7 @@ function updQa(t){const pv=$('#qapv');if(pv)pv.textContent=qaPreview(t.value,cal
 /* A day as an ordered list: time on the left, one row per block. Overlapping blocks simply follow
    each other, long free stretches show as a gap, and on today a line marks "now". */
 function dayListHtml(s,compact){
-  const t=T(),nm=s===t?nowMin():-1,items=dayItems(s),pt=planFor(s).t;
+  const t=T(),nm=s===t?nowMin():-1,items=dayItems(s).concat(todoTimed(s)),pt=planFor(s).t;
   const allday=items.filter(x=>x.start==null);
   const timed=items.filter(x=>x.start!=null).sort((a,b)=>a.start-b.start||a.end-b.end);
   let h='';
@@ -1466,7 +1535,7 @@ function dayListHtml(s,compact){
     const key=x.kind==='routine'&&(x.title===pt||/^Python block|^Football training|^Weekly check-in/.test(x.title)); // the blocks that matter
     const cls='ag '+x.kind+(key?' key':'')+(past?' past':'')+(cur?' cur':'');
     const inner='<span class="ag-t"><b>'+mstr(x.start)+'</b>'+(compact?'':'<small>'+mstr(x.end)+'</small>')+'</span><span class="ag-x">'+esc(compact?x.short:x.title)+'</span>';
-    h+=x.kind!=='routine'?'<button class="'+cls+'" data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'">'+inner+'</button>':'<div class="'+cls+'">'+inner+'</div>';
+    h+=x.kind==='todo'?'<button class="'+cls+'" data-a="goTodos">'+inner+'</button>':x.kind!=='routine'?'<button class="'+cls+'" data-a="evedit" data-id="'+esc(x.id)+'" data-src="'+x.kind+'">'+inner+'</button>':'<div class="'+cls+'">'+inner+'</div>';
     prevEnd=prevEnd==null?x.end:Math.max(prevEnd,x.end);
   });
   if(!nowDone&&nm>=0)h+=nowLine;
@@ -1741,6 +1810,21 @@ const ACT={
  doneTog:()=>{ui.dn=!ui.dn;render();},
  allcTog:()=>{ui.allc=!ui.allc;render();},
  tdnTog:()=>{ui.tdn=!ui.tdn;render();},
+ tdEdit:t=>{ui.tdEdit=ui.tdEdit===t.dataset.id?null:t.dataset.id;render();},
+ tdBulkTog:()=>{ui.tdBulk=!ui.tdBulk;render();if(ui.tdBulk){const el=$('#td-bulk');if(el)el.focus();}},
+ todoBulk:()=>{
+   const el=$('#td-bulk');if(!el||!el.value.trim()){toast('Paste your list first');return;}
+   const have=new Set(todoOpen().map(x=>x.t.toLowerCase()));let n=0,skip=0,nodate=0;
+   el.value.split(/\r?\n/).forEach((ln,k)=>{
+     const r=parseTodoLine(ln);if(!r||!r.t)return;
+     if(have.has(r.t.toLowerCase())){skip++;return;}
+     have.add(r.t.toLowerCase());
+     state.todos.push({id:'td'+Date.now().toString(36)+k,t:r.t,due:r.due,time:r.time,on:r.on,month:r.month,done:r.done?T():null});
+     n++;if(!r.due)nodate++;
+   });
+   ui.tdBulk=false;save();render();window.scrollTo(0,0);
+   toast(n+' to-dos added'+(skip?' · '+skip+' already there':'')+(nodate?' · '+nodate+' without date':''));
+ },
  goTodos:()=>{ui.tab='cal';ui.pmode='todo';render(false);window.scrollTo(0,0);},
  goPlanDay:t=>{const d=t.dataset.date;ui.tab='cal';ui.pmode='sched';ui.cw=monday(d);ui.cday=d;render(false);window.scrollTo(0,0);},
  todoAdd:t=>{
@@ -1751,7 +1835,7 @@ const ACT={
    let due=r.hadDate?r.date:(base||null);
    // "5.11." typed shortly after the 5th means this year's (overdue), not next year's
    if(due&&!/\d{4}/.test(v)){const ly=(+due.slice(0,4)-1)+due.slice(4);if(ly<T()&&ly>=add(T(),-60))due=ly;}
-   state.todos.push({id:'td'+Date.now().toString(36),t:r.title||v,due:due,done:null});
+   state.todos.push({id:'td'+Date.now().toString(36),t:r.title||v,due:due,time:r.start!=null?mstr(r.start):null,on:false,month:false,done:null});
    save();render();const n=$('#td-new');if(n)n.focus();
    toast(due&&due!==T()?'Added for '+fmtS(due):'Added');
  },
