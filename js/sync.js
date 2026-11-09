@@ -10,7 +10,7 @@ const LD=window.LD,C=window.LD_CONFIG||{};
 if(!LD)return;
 const META=LD.KEY+'.sync',SPARE=LD.KEY+'.conflict';
 const configured=!!(C.supabaseUrl&&C.supabaseAnonKey);
-let sb=null,user=null,status='off',lastMsg='',pushT=null,busy=false,again=false,otpEmail='';
+let sb=null,user=null,status='off',lastMsg='',pushT=null,busy=false,again=false,authErr='',lastMail='';
 
 const rd=k=>{try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e){return null;}};
 const wr=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
@@ -89,14 +89,23 @@ function schedulePush(){
   clearTimeout(pushT);pushT=setTimeout(syncOnce,2500);
 }
 
-/* ---------- auth (e-mail code, works inside the home-screen app) ---------- */
-async function sendCode(email){
-  const r=await sb.auth.signInWithOtp({email:email,options:{shouldCreateUser:true}});
-  if(r.error)throw r.error;
+/* ---------- auth (e-mail + password, once per device; the session then stays) ---------- */
+function creds(){
+  const m=((document.getElementById('sync-mail')||{}).value||'').trim();
+  const p=(document.getElementById('sync-pw')||{}).value||'';
+  if(!/^\S+@\S+\.\S+$/.test(m)){LD.toast('Enter your e-mail');return null;}
+  lastMail=m;
+  if(p.length<8){LD.toast('Password: at least 8 characters');return null;}
+  return {email:m,password:p};
 }
-async function verifyCode(email,code){
-  const r=await sb.auth.verifyOtp({email:email,token:code,type:'email'});
-  if(r.error)throw r.error;
+function authMsg(e){
+  const m=(e&&e.message)||String(e);
+  if(/invalid login credentials/i.test(m))return 'E-mail or password wrong. First time on any device? Tap “Create account”.';
+  if(/email not confirmed/i.test(m))return 'E-mail not confirmed: in Supabase turn off “Confirm email” (README step 2), then try again.';
+  if(/already registered|already exists/i.test(m))return 'This e-mail already has an account. Tap “Sign in”.';
+  if(/failed to fetch|network|load failed/i.test(m))return 'No connection to Supabase. Check your internet, or the Project URL in js/config.js.';
+  if(/signups? not allowed|disabled/i.test(m))return 'New accounts are switched off in Supabase. Tap “Sign in” instead.';
+  return m;
 }
 
 /* ---------- UI (More → Setup) ---------- */
@@ -110,23 +119,24 @@ function html(){
     if(sp)h+='<div class="acc" style="margin-top:10px"><b>Spare copy from '+LD.esc(LD.fmtS(sp.at.slice(0,10)))+'</b><p class="muted sm">'+LD.esc(sp.why)+'. Restore it only if something is missing.</p><div class="btns"><button class="btn ghost" data-a="spareUse">Restore spare copy</button><button class="btn ghost" data-a="spareDrop">Delete spare copy</button></div></div>';
     return h+'</section>';
   }
-  if(otpEmail){
-    return h+'<p class="muted">We sent a code to <b>'+LD.esc(otpEmail)+'</b>. Type it here (the link in the e-mail also works, but only in the browser, not in the home-screen app).</p><input class="in otp" id="sync-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="code"><div class="btns"><button class="btn" data-a="syncVerify">Sign in</button><button class="btn ghost" data-a="syncBack">Other e-mail</button></div></section>';
-  }
-  return h+'<p class="muted">Sign in with your e-mail to keep iPhone and PC in step. No password: you get a one-time code by e-mail.</p><input class="in" id="sync-mail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"><div class="btns"><button class="btn" data-a="syncSend">Send code</button></div></section>';
+  return h+'<p class="muted">Sign in to keep iPhone and PC in step. You only do this once per device. The very first time, tap <b>Create account</b>; on every other device, <b>Sign in</b>.</p>'
+    +'<input class="in" id="sync-mail" type="email" inputmode="email" autocomplete="username" autocapitalize="off" placeholder="E-mail" value="'+LD.esc(lastMail)+'">'
+    +'<input class="in" id="sync-pw" type="password" autocomplete="current-password" placeholder="Password (min. 8 characters)" style="margin-top:8px">'
+    +(authErr?'<p class="sm" style="color:var(--bad);margin-top:8px">'+LD.esc(authErr)+'</p>':'')
+    +'<div class="btns"><button class="btn" data-a="syncIn">Sign in</button><button class="btn ghost" data-a="syncUp">Create account</button></div></section>';
+}
+async function doAuth(kind){
+  const c=creds();if(!c)return;
+  authErr='';
+  try{
+    const r=kind==='up'?await sb.auth.signUp(c):await sb.auth.signInWithPassword(c);
+    if(r.error)throw r.error;
+    if(kind==='up'&&!r.data.session){authErr='Account created, but Supabase wants an e-mail confirmation. Turn off “Confirm email” (README step 2) or click the link in the e-mail, then tap Sign in.';LD.render();}
+  }catch(e){authErr=authMsg(e);LD.render();}
 }
 Object.assign(LD.ACT,{
-  syncSend:async()=>{
-    const v=((document.getElementById('sync-mail')||{}).value||'').trim();
-    if(!/^\S+@\S+\.\S+$/.test(v)){LD.toast('Enter your e-mail');return;}
-    try{await sendCode(v);otpEmail=v;LD.render();LD.toast('Code sent');}catch(e){LD.toast('Could not send: '+(e.message||e));}
-  },
-  syncVerify:async()=>{
-    const v=((document.getElementById('sync-code')||{}).value||'').replace(/\s/g,'');
-    if(!/^\d{6,10}$/.test(v)){LD.toast('Enter the code from the e-mail');return;}
-    try{await verifyCode(otpEmail,v);otpEmail='';}catch(e){LD.toast('Code not accepted: '+(e.message||e));}
-  },
-  syncBack:()=>{otpEmail='';LD.render();},
+  syncIn:()=>doAuth('in'),
+  syncUp:()=>doAuth('up'),
   syncNow:()=>{syncOnce().then(()=>{if(window.LDGarmin)return window.LDGarmin.refresh();});},
   syncOut:async()=>{await sb.auth.signOut();},
   spareUse:()=>{const sp=rd(SPARE);if(!sp)return;const cur=JSON.parse(JSON.stringify(LD.state));LD.setState(sp.state);keepSpare(cur,'This was on screen before you restored the spare copy');LD.save();LD.toast('Spare copy restored');},
@@ -149,6 +159,7 @@ if(configured&&window.supabase&&window.supabase.createClient){
     const was=user&&user.id;
     user=session?session.user:null;
     if(!user){setStatus('off');if(was){meta.remoteAt=null;saveMeta();}LD.render();return;}
+    authErr='';
     if(was!==user.id){
       if(ev==='SIGNED_IN'&&!was)LD.toast('Signed in');
       // Run outside the auth callback (Supabase recommends not awaiting inside it).
@@ -158,6 +169,9 @@ if(configured&&window.supabase&&window.supabase.createClient){
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState==='visible')syncOnce().then(()=>{if(window.LDGarmin)window.LDGarmin.refresh();});
     else if(meta.dirty&&user){clearTimeout(pushT);syncOnce();}
+  });
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&e.target&&(e.target.id==='sync-pw'||e.target.id==='sync-mail')){e.preventDefault();doAuth('in');}
   });
   window.addEventListener('online',()=>syncOnce());
   window.addEventListener('offline',()=>setStatus('offline'));

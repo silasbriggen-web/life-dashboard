@@ -35,11 +35,12 @@ garmin/sync.py, .github/workflows/garmin.yml                 → holt Garmin-Wer
 
 1. Auf supabase.com kostenlos registrieren → **New project** (Region z. B. *Central EU (Zurich)*), Datenbank-Passwort sicher ablegen.
 2. **SQL Editor → New query** → Inhalt von `supabase/schema.sql` einfügen → **Run**.
-3. **Authentication → Sign In / Providers → Email**: aktiviert lassen.
-4. **Authentication → Emails → Templates → Magic Link**: in den Text zusätzlich den Code einfügen, z. B.
-   `<p>Dein Code: <b>{{ .Token }}</b></p>`
-   (Die App meldet sich per Code an, weil Links auf dem iPhone im Safari statt in der Home-Bildschirm-App aufgehen.)
-5. **Authentication → URL Configuration → Site URL**: deine GitHub-Pages-Adresse eintragen.
+3. **Authentication → Sign In / Providers → Email**: aktiviert lassen, aber **„Confirm email“ ausschalten** → Save.
+   (Die App meldet sich mit E-Mail + Passwort an, einmal pro Gerät. Ohne diese Einstellung müsste man
+   zuerst einen Mail-Link bestätigen, und der eingebaute Mailversand von Supabase ist stark begrenzt.)
+4. **Authentication → URL Configuration → Site URL**: deine GitHub-Pages-Adresse eintragen.
+5. *Nachdem* du in der App dein Konto erstellt hast (Schritt 3): **Authentication → Sign In / Providers →
+   „Allow new users to sign up“ ausschalten**. Dann kann niemand sonst ein Konto in deinem Projekt anlegen.
 6. **Project Settings → API Keys**: die `Project URL` (unter *Data API*) und den Key `anon` / `public`
    (Reiter *Legacy API Keys*, beginnt mit `eyJ…`) kopieren und in `js/config.js` eintragen.
    Der anon-Key darf öffentlich sein, die Datenbank-Regeln (Row Level Security) schützen deine Daten.
@@ -55,9 +56,12 @@ garmin/sync.py, .github/workflows/garmin.yml                 → holt Garmin-Wer
 
 **Daten umziehen (einmalig, auf dem ersten Gerät):**
 1. In der neuen App **More → Setup → Restore** den Backup-Text aus Schritt 0 einfügen → *Restore from text*.
-2. Danach oben in **Sync between devices** deine E-Mail eingeben → Code aus der Mail eintippen.
-   Die Daten dieses Geräts werden zur Cloud-Kopie.
-3. Auf dem zweiten Gerät nur anmelden – die Daten kommen aus der Cloud.
+2. Danach oben in **Sync between devices** E-Mail und ein neues Passwort (mind. 8 Zeichen) eingeben →
+   **Create account**. Die Daten dieses Geräts werden zur Cloud-Kopie.
+3. Auf dem zweiten Gerät dieselbe E-Mail und dasselbe Passwort → **Sign in** – die Daten kommen aus der Cloud.
+
+Passwort vergessen? Supabase → **SQL Editor** →
+`update auth.users set encrypted_password = crypt('NEUES-PASSWORT', gen_salt('bf')) where email = 'DEINE-MAIL';` → Run.
 
 Ab dann synchronisiert die App automatisch (ein paar Sekunden nach jeder Änderung und beim Öffnen).
 Offline geht alles weiter und wird später nachgeholt. Haben beide Geräte offline etwas geändert,
