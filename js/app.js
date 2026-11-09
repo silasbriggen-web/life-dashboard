@@ -4,6 +4,7 @@
 /* ================= helpers ================= */
 const KEY='silas.life.v1';
 const START='2026-11-07';
+const TRACK='2026-11-09'; // points, streaks and stats count from this day (fresh start)
 const $=(s,r)=>(r||document).querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pad=n=>String(n).padStart(2,'0');
@@ -188,6 +189,26 @@ function migrate(){
   const d=defaults();
   Object.keys(d).forEach(k=>{if(state[k]==null)state[k]=d[k];});
   ['settings','learn','money'].forEach(k=>{Object.keys(d[k]).forEach(kk=>{if(state[k][kk]==null)state[k][kk]=d[k][kk];});});
+  freshStart();
+}
+/* One-time fresh start: everything entered before TRACK goes (checks, notes, sessions, tests, reviews, measurements),
+   while values that Garmin or the scale filled in stay. Runs once per data set; the flag travels with the sync,
+   so the other device does the same when it loads the old copy. Money, stock, appointments, goals and to-dos are kept. */
+function freshStart(){
+  if(state.settings.fresh===TRACK)return;
+  const g=state.gsrc||{};
+  Object.keys(state.days).forEach(k=>{
+    if(k>=TRACK)return;
+    const sl=state.days[k]&&state.days[k].sleep;
+    if(sl!=null&&g['days|'+k+'|sleep'])state.days[k]={sleep:sl};else delete state.days[k];
+  });
+  Object.keys(state.weights).forEach(k=>{if(k<TRACK&&!g['weights|'+k])delete state.weights[k];});
+  state.sessions=state.sessions.filter(z=>z.date>=TRACK||z.gid);
+  Object.keys(state.bench).forEach(id=>{state.bench[id]=(state.bench[id]||[]).filter(e=>e.date>=TRACK||e.g||/garmin/i.test(e.note||''));});
+  state.measures=state.measures.filter(x=>x.date>=TRACK);
+  Object.keys(state.weeks).forEach(k=>{if(k<TRACK)delete state.weeks[k];});
+  Object.keys(state.reviews).forEach(k=>{const dt=k.slice(2);if(k[0]==='w'?dt<TRACK:dt<TRACK.slice(0,7))delete state.reviews[k];});
+  state.settings.fresh=TRACK;
 }
 migrate();
 let qt=null;
@@ -236,7 +257,7 @@ function dayChecks(s){
 }
 const cnt=c=>CHK.filter(x=>c[x.id].on).length;
 const weekDays=m=>[0,1,2,3,4,5,6].map(i=>add(m,i));
-const dayScore=s=>s<START?null:cnt(dayChecks(s));
+const dayScore=s=>s<TRACK?null:cnt(dayChecks(s));
 function weekScore(m){
   let sc=0,mx=0;const t=T();
   weekDays(m).forEach(s=>{const d=dayScore(s);if(d!=null){mx+=10;if(s<=t)sc+=d;}});
@@ -253,7 +274,7 @@ function streaks(){
   ];
   return defs.map(d=>{
     let run=0,best=0;
-    for(let s=START;s<=t;s=add(s,1)){
+    for(let s=TRACK;s<=t;s=add(s,1)){
       if(!d.sched(s))continue;
       if(d.done(s)){run++;if(run>best)best=run;}
       else if(s!==t)run=0;
@@ -598,7 +619,7 @@ function agendaHtml(s){
 
 /* ================= WEEK ================= */
 function weekQuotas(m){
-  const days=weekDays(m).filter(s=>s>=START);
+  const days=weekDays(m).filter(s=>s>=TRACK);
   const sd=days.filter(s=>planFor(s).k==='s'),cd=days.filter(s=>planFor(s).k==='c'),ld=days.filter(s=>dow(s)<=3);
   return{
     sN:sd.length,sD:sd.filter(s=>dayChecks(s).tr.on).length,
@@ -613,7 +634,7 @@ function vWeek(){
   h+='<section class="card"><div class="lab">Tracker</div><div class="gridw"><table class="grid"><thead><tr><th></th>'+days.map(s=>'<th class="'+(s===t?'tod':'')+'"><button class="lnk" data-a="gotoDay" data-date="'+s+'">'+DAY[dow(s)][0]+'<small>'+pd(s).getDate()+'</small></button></th>').join('')+'</tr></thead><tbody>';
   CHK.forEach(x=>{
     h+='<tr><td class="gl">'+x.s+'</td>'+days.map(s=>{
-      if(s<START)return '<td class="gx">·</td>';
+      if(s<TRACK)return '<td class="gx">·</td>';
       const c=dayChecks(s)[x.id];
       return '<td><button class="gc '+(c.on?'on':'')+(c.auto?' auto':'')+'" data-a="wchk" data-date="'+s+'" data-id="'+x.id+'" '+(c.auto?'disabled':'')+' aria-label="'+esc(x.t)+'">'+(c.on?'✓':'')+'</button></td>';
     }).join('')+'</tr>';
@@ -788,8 +809,8 @@ function vProg(){
 }
 /* share of points per week; the running week counts only the days that are over */
 function weekPct(m){
-  const t=T();let d=weekDays(m).filter(s=>s>=START&&s<t);
-  if(!d.length)d=weekDays(m).filter(s=>s>=START&&s<=t);
+  const t=T();let d=weekDays(m).filter(s=>s>=TRACK&&s<t);
+  if(!d.length)d=weekDays(m).filter(s=>s>=TRACK&&s<=t);
   if(!d.length)return null;
   return d.reduce((a,s)=>a+dayScore(s),0)/(d.length*10);
 }
@@ -806,7 +827,7 @@ function barsSvg(list){
 }
 /* how often each check was hit over the last n finished days */
 function habitStats(n){
-  const to=add(T(),-1),f0=add(to,-(n-1)),from=f0<START?START:f0,out=[];
+  const to=add(T(),-1),f0=add(to,-(n-1)),from=f0<TRACK?TRACK:f0,out=[];
   if(to<from)return null;
   CHK.forEach(x=>{
     let on=0,of=0;
@@ -867,7 +888,7 @@ function overHtml(){
   }
   h+='</section>';
   // 4. training
-  const tw=trainWeek(m0),past=[1,2,3,4].map(i=>add(m0,-7*i)).filter(m=>add(m,6)>=START).map(trainWeek);
+  const tw=trainWeek(m0),past=[1,2,3,4].map(i=>add(m0,-7*i)).filter(m=>add(m,6)>=TRACK).map(trainWeek);
   const pa=k=>past.length?r1(avg(past.map(x=>x[k]))):null,mo=pd(t).getMonth(),rideGoal=mo===10?90:mo===11?135:180;
   const vs=(a,k)=>a+(pa(k)!=null?' <span class="muted sm">· avg '+pa(k)+'</span>':'');
   h+='<section class="card"><div class="lab">Training · this week</div>'+q('Strength sessions',vs(tw.ss,'ss'))+q('Cardio sessions',vs(tw.cn,'cn'))+q('Cardio minutes',vs(tw.min,'min'))+
@@ -950,7 +971,7 @@ function goalsHtml(){
 function buildMonthly(f,e){
   const now=T(),t=e&&e<now?e:now,from=f||add(t,-29),L=[];
   L.push('Monthly check-in ('+fmtS(from)+' – '+fmtS(t)+')');
-  const days=[];for(let s=from;s<=t;s=add(s,1))if(s>=START)days.push(s);
+  const days=[];for(let s=from;s<=t;s=add(s,1))if(s>=TRACK)days.push(s);
   const pts=days.reduce((a,s)=>a+dayScore(s),0);
   L.push('1. Tracker: '+pts+'/'+(days.length*10)+' points over '+days.length+' days');
   const inr=z=>z.date>=from&&z.date<=t&&sessHasData(z);
@@ -1100,7 +1121,7 @@ function dueList(s,all){
     if(nm>=1230&&prepItems(s).some(x=>!x.on))out.prep=true;
     // last night's checks are usually ticked the next morning
     const y=add(s,-1);
-    if(y>=START&&nm<720){
+    if(y>=TRACK&&nm<720){
       const cy=dayChecks(y);
       ['pr','wa','su','ig','ev','li'].forEach(id=>{if(!cy[id].on&&!cy[id].auto)out.yest.push('<div class="nwr"><button class="chk" data-a="wchk" data-date="'+y+'" data-id="'+id+'"><span class="bx"></span><span>'+esc(CHK.find(x=>x.id===id).t)+'</span></button></div>');});
     }
@@ -1269,7 +1290,7 @@ function curvesHtml(){
 /* reviews */
 function periodStats(from,to){
   const t=T(),days=[];for(let s=from;s<=to;s=add(s,1))days.push(s);
-  const sc=days.filter(s=>s>=START&&s<=t),inr=z=>z.date>=from&&z.date<=to&&sessHasData(z);
+  const sc=days.filter(s=>s>=TRACK&&s<=t),inr=z=>z.date>=from&&z.date<=to&&sessHasData(z);
   const ws=days.map(s=>state.weights[s]).filter(v=>v!=null);
   return{n:sc.length,pts:sc.reduce((a,s)=>a+dayScore(s),0),mx:sc.length*10,
    str:state.sessions.filter(z=>z.type!=='cardio'&&inr(z)).length,car:state.sessions.filter(z=>z.type==='cardio'&&inr(z)).length,
