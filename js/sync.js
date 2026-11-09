@@ -43,6 +43,38 @@ async function pushNow(){
 function keepSpare(obj,why){
   wr(SPARE,{at:new Date().toISOString(),why:why,state:obj});
 }
+/* Both sides changed since the last sync: merge them instead of throwing one away.
+   Objects are merged key by key; lists of items with an id (to-dos, appointments, sessions, goals) are joined by id;
+   where both sides have the same value slot, this device wins. Deleted ids (state.tomb) stay deleted. */
+const isObj=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+function mergeVal(r,l,tomb){
+  if(l===undefined)return r;
+  if(r===undefined)return l;
+  if(Array.isArray(r)&&Array.isArray(l)){
+    const idList=a=>a.length>0&&a.every(x=>isObj(x)&&x.id!=null);
+    if((idList(r)||!r.length)&&(idList(l)||!l.length)&&(r.length||l.length)){
+      const byId=new Map();r.forEach(x=>byId.set(String(x.id),x));
+      const out=[];const seen=new Set();
+      l.forEach(x=>{const k=String(x.id);seen.add(k);if(tomb[k])return;out.push(byId.has(k)?mergeVal(byId.get(k),x,tomb):x);});
+      r.forEach(x=>{const k=String(x.id);if(!seen.has(k)&&!tomb[k])out.push(x);});
+      return out;
+    }
+    return l;
+  }
+  if(isObj(r)&&isObj(l)){
+    const o={};
+    // a to-do ticked on either device stays ticked
+    new Set(Object.keys(r).concat(Object.keys(l))).forEach(k=>{o[k]=k==='done'&&(r[k]||l[k])?(l[k]||r[k]):mergeVal(r[k],l[k],tomb);});
+    return o;
+  }
+  return l;
+}
+function mergeState(remote,local){
+  const tomb=Object.assign({},(remote&&remote.tomb)||{},(local&&local.tomb)||{});
+  const m=mergeVal(remote,local,tomb);
+  m.tomb=tomb;
+  return m;
+}
 /* One sync round: pull if the cloud is newer, push if we have local changes. */
 async function syncOnce(){
   if(!sb||!user)return;
@@ -61,14 +93,12 @@ async function syncOnce(){
       adopt(remote);
     }else if(tp(remote.updated_at)>tp(meta.remoteAt)){
       if(!meta.dirty)adopt(remote);
-      else if(tp(remote.updated_at)>tp(meta.localAt)){
-        // Both sides changed while apart: the newer edit wins, the other one is kept as a spare copy.
-        keepSpare(clone(LD.state),'Your changes on this device were older than the cloud');
-        adopt(remote);
-        LD.toast('Newer data from your other device loaded');
-      }else{
-        keepSpare(remote.state,'The cloud version was older than this device');
+      else{
+        // Both sides changed while apart: merge them, keep this device's pre-merge copy just in case.
+        keepSpare(clone(LD.state),'Before merging with your other device');
+        LD.setState(mergeState(remote.state,clone(LD.state)));
         await pushNow();
+        LD.toast('Changes from your other device merged');
       }
     }else if(meta.dirty){
       await pushNow();
@@ -149,7 +179,8 @@ window.LDSync={
   html:html,
   client:()=>sb,
   user:()=>user,
-  syncOnce:syncOnce
+  syncOnce:syncOnce,
+  merge:mergeState
 };
 LD.hooks.save.push(schedulePush);
 

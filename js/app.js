@@ -174,7 +174,8 @@ function defaults(){return{
   {id:'g2',t:'5 km under 21:00',k:'bench',b:'k5',target:1260,by:'2027-06-30',created:'2026-11-07'},
   {id:'g3',t:'Python course finished',k:'learn',target:COURSE_TOTAL,by:'2027-02-14',created:'2026-11-07'}
  ],
- gsrc:{},gdel:{}
+ gsrc:{},gdel:{},
+ tomb:{} // ids of deleted to-dos, appointments and sessions, so a sync merge does not bring them back
 };}
 function load(){
   try{localStorage.setItem(KEY+'.probe','1');localStorage.removeItem(KEY+'.probe');}catch(e){storageOK=false;return null;}
@@ -192,7 +193,9 @@ function migrate(){
   freshStart();
   // done to-dos older than 30 days are removed for good (they are hidden after one day anyway)
   if(Array.isArray(state.todos))state.todos=state.todos.filter(x=>!x.done||x.done>=add(T(),-30));
+  Object.keys(state.tomb||{}).forEach(k=>{if(state.tomb[k]<add(T(),-120))delete state.tomb[k];});
 }
+const tombstone=id=>{state.tomb=state.tomb||{};state.tomb[id]=T();};
 /* One-time fresh start: everything entered before TRACK goes (checks, notes, sessions, tests, reviews, measurements),
    while values that Garmin or the scale filled in stay. Runs once per data set; the flag travels with the sync,
    so the other device does the same when it loads the old copy. Money, stock, appointments, goals and to-dos are kept. */
@@ -1870,7 +1873,7 @@ const ACT={
  mdel:()=>{
    const m=ui.modal;if(!m)return;
    if(m.src==='fixed')state.hiddenFixed[m.id]=true;
-   else state.events=state.events.filter(x=>x.id!==m.id);
+   else{tombstone(m.id);state.events=state.events.filter(x=>x.id!==m.id);}
    save();ui.modal=null;renderModal();render();toast('Deleted');
  },
  dprev:()=>{ui.date=add(ui.date,-1);render();},
@@ -1911,7 +1914,7 @@ const ACT={
    const z={id:'s'+Date.now(),date:ui.date,type:'cardio',kind:$('#cd-k').value,min:pnum($('#cd-m').value),dist:pnum($('#cd-d').value),w:pnum($('#cd-w').value),hr:pnum($('#cd-h').value),feel:pnum($('#cd-f').value),note:$('#cd-n').value.trim()};
    state.sessions.push(z);save();render();toast('Cardio saved');
  },
- delSess:t=>{if(!arm('sess'+t.dataset.id))return;const z=state.sessions.find(x=>x.id===t.dataset.id);if(z&&z.gid)state.gdel[z.gid]=true;state.sessions=state.sessions.filter(x=>x.id!==t.dataset.id);save();render();},
+ delSess:t=>{if(!arm('sess'+t.dataset.id))return;const z=state.sessions.find(x=>x.id===t.dataset.id);if(z&&z.gid)state.gdel[z.gid]=true;tombstone(t.dataset.id);state.sessions=state.sessions.filter(x=>x.id!==t.dataset.id);save();render();},
  yTog:()=>{ui.yo=!ui.yo;render();},
  doneTog:()=>{ui.dn=!ui.dn;render();},
  allcTog:()=>{ui.allc=!ui.allc;render();},
@@ -1946,7 +1949,7 @@ const ACT={
    toast(due&&due!==T()?'Added for '+fmtS(due):'Added');
  },
  todoTog:t=>{const x=state.todos.find(z=>z.id===t.dataset.id);if(!x)return;x.done=x.done?null:T();save();render();},
- todoDel:t=>{const i=state.todos.findIndex(z=>z.id===t.dataset.id);if(i<0)return;const x=state.todos[i];state.todos.splice(i,1);save();render();toast('Deleted “'+x.t+'”');},
+ todoDel:t=>{const i=state.todos.findIndex(z=>z.id===t.dataset.id);if(i<0)return;const x=state.todos[i];tombstone(x.id);state.todos.splice(i,1);save();render();toast('Deleted “'+x.t+'”');},
  doUpdate:()=>{const f=ui.upd;ui.upd=null;if(f)f();},
  wgf:()=>{const p='weeks|'+ui.wm+'|gf';setPath(p,!getPath(p));save();render();},
  copy:t=>copyText(t.dataset.target),
