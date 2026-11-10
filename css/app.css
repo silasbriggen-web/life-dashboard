@@ -424,12 +424,12 @@ h1{font-size:32px;font-weight:750;letter-spacing:-.025em;line-height:1.1}
 .tw .lrt b{font-weight:600;font-size:14.5px}
 .tw-ok{color:var(--ok);font-weight:700}.tw-miss{color:var(--bad)}.tw-r{font-size:12px;color:var(--muted)}
 /* ===== phone: compact goals ===== */
-.gc{padding:10px 0;border-top:1px solid var(--line)}
-.gc:first-of-type{border-top:0}
-.gc-h{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:6px}
-.gc-h b{font-size:14.5px}.gc-h span{font-size:12px;font-weight:650;flex:none}
-.gc-h .ok{color:var(--ok)}.gc-h .warn{color:var(--warn)}
-.gc small{display:block;margin-top:5px;font-size:12px}
+.gcomp{padding:10px 0;border-top:1px solid var(--line)}
+.gcomp:first-of-type{border-top:0}
+.gcomp-h{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:6px}
+.gcomp-h b{font-size:14.5px}.gcomp-h span{font-size:12px;font-weight:650;flex:none}
+.gcomp-h .ok{color:var(--ok)}.gcomp-h .warn{color:var(--warn)}
+.gcomp small{display:block;margin-top:5px;font-size:12px}
 /* ===== desktop sidebar: grouped chapters ===== */
 .tg{display:none}
 @media (min-width:900px){

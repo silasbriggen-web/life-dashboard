@@ -1023,7 +1023,7 @@ function goalsCompact(){
   if(!state.goals.length)return '';
   return '<section class="card"><div class="lab">Goals</div>'+state.goals.map(g=>{
     const i=goalInfo(g),late=!i.reached&&i.exp!=null&&i.p+0.05<i.exp;
-    return '<div class="gc"><div class="gc-h"><b>'+esc(g.t)+'</b><span class="'+(i.reached?'ok':late?'warn':'muted')+'">'+(i.reached?'reached ✓':g.by?(i.left>=0?i.left+' d left':'overdue'):'')+'</span></div>'+bar(i.p*100)+'<small class="muted">now '+esc(goalFmt(g,i.cur))+' · target '+esc(goalFmt(g,g.target))+'</small></div>';
+    return '<div class="gcomp"><div class="gcomp-h"><b>'+esc(g.t)+'</b><span class="'+(i.reached?'ok':late?'warn':'muted')+'">'+(i.reached?'reached ✓':g.by?(i.left>=0?i.left+' d left':'overdue'):'')+'</span></div>'+bar(i.p*100)+'<small class="muted">now '+esc(goalFmt(g,i.cur))+' · target '+esc(goalFmt(g,g.target))+'</small></div>';
   }).join('')+'</section>';
 }
 function vProg(){
